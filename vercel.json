@@ -1,3 +1,5 @@
 {
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "dist/spa",
   "rewrites": [{ "source": "/(.*)", "destination": "/" }]
 }

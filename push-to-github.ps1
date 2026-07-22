@@ -1,4 +1,6 @@
-# Commits the identity/duet work and pushes it to GitHub.
+param([string]$Message)
+
+# Commits any pending changes and pushes them to GitHub.
 # Writes a transcript to push-log.txt so failures can be diagnosed.
 #
 # Run:  double-click PUSH.bat
@@ -74,18 +76,12 @@ if ([string]::IsNullOrWhiteSpace($staged)) {
     Write-Host "Staged files:"
     ($staged -split "`r?`n") | Where-Object { $_ } | ForEach-Object { Write-Host "   $_" }
 
-    $msg = @"
-Add session identity tracking, duet support, and host queue improvements
-
-- Group requests by shared IP and device id across the whole event,
-  including completed songs, so a singer who returns under a new name
-  is still linked to their earlier performances
-- Surface flagged multi-name devices in a host alert panel and replace
-  the raw IP column with a colour-coded Who/Device column
-- Add a duet checkbox with optional partner name to the request form
-- Add supabase-migrations.sql for the is_duo and partner columns
-- Cover the grouping logic with unit tests
-"@
+    if ($Message) {
+        $msg = $Message
+    } else {
+        $msg = "Update karaoke app - " + (Get-Date -Format "yyyy-MM-dd HH:mm")
+    }
+    Write-Host "Commit message: $msg"
     git commit -m $msg
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Commit failed. See output above." -ForegroundColor Red
