@@ -28,18 +28,19 @@ export default function Header() {
             </span>
           </a>
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* h-11 on phones keeps the tap area at the 44px minimum that
+                Apple and WCAG both ask for; shrinks on desktop where a
+                cursor is precise. */}
             <Button
               asChild
               variant="ghost"
-              size="sm"
-              className="font-semibold hover:bg-white/5"
+              className="h-11 sm:h-9 px-3 sm:px-3 font-semibold hover:bg-white/5"
             >
               <a href="/">Events</a>
             </Button>
             <Button
               asChild
-              size="sm"
-              className="font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25"
+              className="h-11 sm:h-9 px-4 font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25"
             >
               <a href="/host/login">Host Login</a>
             </Button>

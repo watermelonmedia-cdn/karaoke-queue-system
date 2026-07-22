@@ -168,16 +168,21 @@ export default function Index() {
             alt="Logo"
             className="mx-auto h-[9.875rem] w-auto rounded"
           />
-          <div className="mt-12 space-y-4">
-            <p className="text-5xl">🎤✨</p>
-            <h2 className="text-2xl md:text-3xl font-extrabold">
-              Coming Soon...
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-md mx-auto">
-              The host is preparing the stage! Warm up those vocal cords and get
-              ready to shine. A new karaoke night is just around the corner! 🌟
-            </p>
-            <div className="pt-4 text-5xl animate-bounce" style={{ color: '#a855f7' }}>🎵</div>
+          <div className="mt-10">
+            <div className="glass mx-auto max-w-lg rounded-2xl px-8 py-10">
+              <p className="text-5xl">🎤✨</p>
+              <div className="eyebrow mt-4 text-accent/90">Between shows</div>
+              <h2 className="font-display mt-1 text-3xl md:text-4xl font-extrabold marquee-text">
+                Coming Soon
+              </h2>
+              <p className="mx-auto mt-3 max-w-md text-base text-muted-foreground">
+                The host is preparing the stage. Warm up those vocal cords and
+                get ready to shine, a new karaoke night is just around the
+                corner.
+              </p>
+              <div className="rule-gold mx-auto mt-6 w-2/3 opacity-60" />
+              <div className="pt-5 text-4xl animate-bounce text-primary">🎵</div>
+            </div>
           </div>
         </div>
       </div>
@@ -212,56 +217,64 @@ export default function Index() {
           alt="Logo"
           className="mx-auto h-24 w-auto rounded"
         />
-        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-          <p>Sing! Laugh! Enjoy!</p>
+        <h1 className="font-display text-3xl md:text-4xl font-extrabold tracking-tight marquee-text">
+          Sing! Laugh! Enjoy!
         </h1>
       </div>
 
       {/* Event Hero Section */}
-      <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent overflow-hidden">
-        <CardContent className="p-8">
-          <div className="space-y-4">
+      <Card className="spotlight rounded-2xl overflow-hidden">
+        <CardContent className="relative p-7 sm:p-9">
+          <div className="space-y-5">
             <div>
-              <h2 className="text-4xl md:text-5xl font-extrabold mb-3">
+              <div className="eyebrow mb-2 text-accent/90">Now playing at</div>
+              <h2 className="font-display text-4xl md:text-6xl font-extrabold leading-[1.03] mb-4">
                 {activeEvent.name}
               </h2>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <span
                   className={cn(
-                    "text-sm px-3 py-1 rounded-full font-semibold",
+                    "inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-full font-semibold border backdrop-blur",
                     isClosed
-                      ? "bg-destructive/20 text-destructive"
-                      : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+                      ? "bg-destructive/15 text-destructive border-destructive/40"
+                      : "bg-emerald-500/12 text-emerald-300 border-emerald-500/40",
                   )}
                 >
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      isClosed ? "bg-destructive" : "bg-emerald-400 animate-pulse",
+                    )}
+                  />
                   {isClosed ? "Requests Closed" : "Requests Open"}
                 </span>
-                <span className="text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/30 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur">
                   📅 {formatMSTTime(activeEvent.datetime)}
                 </span>
-                <span className="text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/30 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur">
                   📍 {activeEvent.location}
                 </span>
               </div>
             </div>
 
             {isClosed && (
-              <p className="text-sm text-muted-foreground bg-destructive/10 p-3 rounded">
+              <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-muted-foreground">
                 This event is visible, but new song requests are paused.
               </p>
             )}
 
             {!isClosed && (
               <Button
+                size="lg"
                 onClick={() => {
                   const form = document.getElementById("submit-form-section");
                   if (form) {
                     form.scrollIntoView({ behavior: "smooth" });
                   }
                 }}
-                className="mt-2"
+                className="mt-1 h-12 rounded-xl px-7 text-base font-bold shadow-lg shadow-primary/30 transition hover:-translate-y-0.5 hover:shadow-primary/50"
               >
-                Request Now ↓
+                🎤 Request Your Song
               </Button>
             )}
           </div>
@@ -269,7 +282,7 @@ export default function Index() {
       </Card>
 
       {/* Request Queue Summary */}
-      <Card className="border-primary/20">
+      <Card className="glass rounded-2xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-primary" />
@@ -309,7 +322,7 @@ export default function Index() {
       </Card>
 
       {/* Queue Status */}
-      <Card className="border-primary/20">
+      <Card className="glass rounded-2xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Music className="w-5 h-5 text-primary" />
@@ -456,7 +469,7 @@ export default function Index() {
       </Card>
 
       {/* Song Catalog Link */}
-      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5">
+      <Card className="glass rounded-2xl">
         <CardContent className="p-6 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold mb-1">Need help finding a song?</h3>
@@ -558,7 +571,7 @@ function RequestSubmissionForm({
 
   if (isClosed) {
     return (
-      <Card className="border-destructive/30 bg-destructive/5">
+      <Card className="rounded-2xl border-destructive/40 bg-destructive/10 backdrop-blur">
         <CardContent className="p-8 text-center space-y-3">
           <p className="text-lg font-semibold text-destructive">
             ⏸️ Song Requests Are Currently Closed
@@ -574,7 +587,7 @@ function RequestSubmissionForm({
 
   if (success) {
     return (
-      <Card className="border-emerald-500/40 bg-emerald-500/10 mb-8">
+      <Card className="rounded-2xl border-emerald-500/40 bg-emerald-500/10 backdrop-blur mb-8">
         <CardContent className="p-8 text-center space-y-4">
           <div className="text-4xl">🎉</div>
           <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
@@ -595,7 +608,7 @@ function RequestSubmissionForm({
   }
 
   return (
-    <Card className="border-primary/30">
+    <Card className="glass rounded-2xl">
       <CardHeader>
         <CardTitle className="text-2xl">Submit Your Song</CardTitle>
       </CardHeader>

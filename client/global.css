@@ -255,6 +255,57 @@
     }
   }
 
+  /* -----------------------------------------------------------------------
+     Mobile hardening
+     Phones are the primary device for singers, and many of them are old and
+     cheap. Stacked backdrop-filter layers are the most expensive thing on
+     this page, so below the sm breakpoint we trade the blur for an opaque
+     surface. Visually near-identical over a dark backdrop, far cheaper.
+     ----------------------------------------------------------------------- */
+  @media (max-width: 640px) {
+    .glass {
+      backdrop-filter: none;
+      background: hsl(var(--card) / 0.94);
+    }
+
+    /* Softer, cheaper lighting; the large blurred gradients are the main
+       cause of scroll jank on low-end Android. */
+    .stage-bg::before {
+      background:
+        radial-gradient(
+          30rem 22rem at 12% -8%,
+          hsl(var(--primary) / 0.26),
+          transparent 62%
+        ),
+        radial-gradient(
+          26rem 20rem at 100% 2%,
+          hsl(var(--accent) / 0.13),
+          transparent 58%
+        );
+    }
+
+    /* Grain is a full-screen repaint for a effect nobody notices on a
+       6-inch screen. */
+    .stage-bg::after {
+      display: none;
+    }
+  }
+
+  /* Long event names must never push the layout sideways */
+  .marquee-text,
+  h1,
+  h2 {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Guarantee no accidental horizontal scroll on narrow screens */
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   /* Scrollbar styling for queue list */
   .scrollbar-thin {
     scrollbar-width: thin;
