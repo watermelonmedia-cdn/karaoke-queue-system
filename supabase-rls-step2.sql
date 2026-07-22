@@ -1,11 +1,19 @@
 -- Karaoke Queue System - RLS step 2: hide personal columns
 --
--- DO NOT RUN THIS YET.
+-- PREREQUISITES - both must be true before running this.
 --
--- This must be run AFTER host login moves to Supabase Auth. Until then your
--- host browser authenticates as `anon`, exactly like every singer's phone, so
--- hiding these columns from `anon` would also hide them from you and break the
--- identity grouping in the host view.
+--   1. Host login is a real Supabase Auth session.
+--      Check: the amber "Legacy login in use" banner is absent from /host,
+--      and the session token carries role = "authenticated".
+--
+--   2. The app is deployed at commit "Fix the requests query..." or later.
+--      Earlier builds request ip and device_id by name in one combined query.
+--      Postgres fails the ENTIRE query with 42501 when a role asks for a
+--      column it cannot read, so running this against an older build empties
+--      the public queue for every singer. The current build retries with a
+--      public-only column list, which is what makes this script safe.
+--
+-- Safe to run more than once.
 --
 -- WHY THE FIRST ATTEMPT DID NOTHING
 -- supabase-rls.sql used:
@@ -89,6 +97,7 @@ create policy events_host_write
   to authenticated
   using (true) with check (true);
 
+drop policy if exists events_public_read_only on public.events;
 create policy events_public_read_only
   on public.events for select
   to anon

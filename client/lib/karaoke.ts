@@ -535,11 +535,25 @@ async function performRefresh(): Promise<void> {
     }
 
     console.log("[Karaoke] Attempting to fetch requests from Supabase...");
-    const fresh = await supa
-      .from("requests")
-      .select(
-        "id,event_id,singer,song_title,artist,status,created_at,device_id,ip,order,started_at,completed_at",
+
+    // Columns every visitor is allowed to read.
+    const PUBLIC_COLS =
+      "id,event_id,singer,song_title,artist,status,created_at,order,started_at,completed_at,is_duo,partner";
+    // Personal columns. After supabase-rls-step2.sql these are readable only by
+    // a signed-in host, so asking for them as anon fails the WHOLE query with
+    // 42501 rather than omitting them. Hence the retry below.
+    const HOST_COLS = PUBLIC_COLS + ",device_id,ip";
+
+    // Typed as any: the two select() calls infer different row shapes, and
+    // reassigning would otherwise widen this into a union that loses `id`.
+    let fresh: any = await supa.from("requests").select(HOST_COLS);
+
+    if (fresh.error && isPermissionDeniedError(fresh.error)) {
+      console.info(
+        "[Karaoke] No access to ip/device_id (expected when signed out); refetching public columns only.",
       );
+      fresh = await supa.from("requests").select(PUBLIC_COLS);
+    }
 
     if (fresh.error) {
       const errorMsg = fresh.error.message || "Unknown error";
@@ -777,6 +791,17 @@ export function addRequest(
   all.push(req);
   setRequests(all);
   return { ok: true, id };
+}
+
+/**
+ * Detects a Postgres privilege error (42501). Raised when a role asks for a
+ * column it has no SELECT grant on, which is the expected state for anonymous
+ * visitors once supabase-rls-step2.sql has been applied.
+ */
+function isPermissionDeniedError(error: any): boolean {
+  const code = String(error?.code || "");
+  const msg = String(error?.message || "").toLowerCase();
+  return code === "42501" || msg.includes("permission denied");
 }
 
 /** Detects a Postgres "column does not exist" style error from Supabase. */
