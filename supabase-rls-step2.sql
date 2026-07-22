@@ -16,6 +16,28 @@
 -- grant and re-grant the safe columns explicitly, which is what this does.
 
 -- ---------------------------------------------------------------------------
+-- 0. SINGERS NEVER SIGN IN
+--
+-- Nothing in this script asks an end user to authenticate. Song requests stay
+-- fully anonymous: open the page, type a name and song, submit.
+--
+-- These two policies are recreated here rather than inherited from step 1, so
+-- this script is self-sufficient and the public path cannot be broken by
+-- running the scripts out of order or after a rollback.
+-- ---------------------------------------------------------------------------
+drop policy if exists requests_public_insert on public.requests;
+create policy requests_public_insert
+  on public.requests for insert
+  to anon, authenticated
+  with check (true);
+
+drop policy if exists requests_public_read on public.requests;
+create policy requests_public_read
+  on public.requests for select
+  to anon, authenticated
+  using (true);
+
+-- ---------------------------------------------------------------------------
 -- 1. Replace the blanket grant with a column list
 -- ---------------------------------------------------------------------------
 revoke select on public.requests from anon;

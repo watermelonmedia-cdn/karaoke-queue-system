@@ -8,7 +8,14 @@ export function getSupabase(): SupabaseClient | null {
   if (!url || !anon) return null;
   if (!cached) {
     cached = createClient(url, anon, {
-      auth: { persistSession: false },
+      auth: {
+        // Host login uses Supabase Auth, so the session must survive a page
+        // reload. This was previously false, which would have silently logged
+        // the host out on every refresh.
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
     });
   }
   return cached;

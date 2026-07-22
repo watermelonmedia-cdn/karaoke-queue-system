@@ -8,7 +8,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import EventPage from "./pages/Event";
 import HostPage from "./pages/Host";
 import HostLoginPage from "./pages/HostLogin";
 import HostArchivePage from "./pages/HostArchive";
@@ -53,7 +52,6 @@ const App = () => (
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
-            <Route path="/event/:id" element={<EventPage />} />
             <Route path="/host/login" element={<HostLoginPage />} />
             <Route path="/host" element={<HostPage />} />
             <Route path="/host/archive" element={<HostArchivePage />} />

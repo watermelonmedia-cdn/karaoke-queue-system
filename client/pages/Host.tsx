@@ -38,6 +38,9 @@ import {
   getSingerOrder,
   setSingerOrder,
   isHostAuthed,
+  getAuthMode,
+  refreshHostSession,
+  type AuthMode,
   moveSingerToIndex,
   reorderRequests,
   setHostSelectedEvent,
@@ -102,9 +105,20 @@ export default function HostPage() {
     requestsOpen: true,
   });
 
+  const [authMode, setAuthMode] = useState<AuthMode>(getAuthMode());
+
   useEffect(() => {
     if (!authed) nav("/");
   }, [authed, nav]);
+
+  // Keep the sync auth flag in step with the Supabase session across reloads.
+  useEffect(() => {
+    (async () => {
+      await refreshHostSession();
+      setAuthMode(getAuthMode());
+      setAuthed(isHostAuthed());
+    })();
+  }, []);
 
   // Check Supabase health on mount
   useEffect(() => {
@@ -875,6 +889,20 @@ export default function HostPage() {
               </div>
             </CardContent>
           </Card>
+          {authMode === "legacy" && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm">
+              <span className="font-semibold text-amber-300">
+                Legacy login in use.
+              </span>{" "}
+              <span className="text-muted-foreground">
+                You are signed in with the in-browser account, not Supabase
+                Auth. Do not run supabase-rls-step2.sql while in this mode, it
+                restricts writes to authenticated sessions and would lock this
+                dashboard.
+              </span>
+            </div>
+          )}
+
           <NightAtAGlance
             now={now}
             onDeck={eventId ? getOnDeck(eventId) : undefined}

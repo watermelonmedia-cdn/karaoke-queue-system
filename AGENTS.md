@@ -167,69 +167,96 @@ const data: MyRouteResponse = await response.json();
 
 # Rossco's Karaoke - project specifics
 
-Read this before changing anything singer-facing. Two mistakes were made in one
-session by not knowing it.
+Read this before changing anything singer-facing.
 
-## There are THREE song submission paths. All three are intentional.
+## Scope
 
-| File | Route | Function called | device_id / ip stored | Audience |
+**One host, one event, at a time.** The app is not for coordinating multiple
+concurrent events. Do not add multi-event or multi-room features without asking.
+
+## The TWO song submission paths. Both are intentional. Do not merge them.
+
+| File | Route | Function | device_id / ip | Audience |
 |---|---|---|---|---|
-| `client/pages/Index.tsx` | `/` | `addRequestAsync` | real values | End user. **Primary surface.** |
-| `client/pages/Event.tsx` | `/event/:id` | `addRequestAsync` | real values | End user |
-| `client/pages/Host.tsx` | `/host` | `addRequestAsHost` | literal `"host"` | Host, working in the background |
+| `client/pages/Index.tsx` | `/` | `addRequestAsync` | real values | End user. **The only singer-facing form.** |
+| `client/pages/Host.tsx` | `/host` | `addRequestAsHost` | literal `"host"` | Host, entering songs in the background |
 
-**Do not "consolidate" these.** The host form and the end-user forms serve
-different jobs and both are needed.
+The end-user form lives in the `SubmitForm` component in `Index.tsx`, at the
+`#submit-form-section` anchor that the hero button scrolls to.
 
-`Index.tsx` is where singers actually submit. Its form lives in the `SubmitForm`
-component at the `#submit-form-section` anchor, which the hero button scrolls
-to. **Any change to the request form must be applied to `Index.tsx`**, and
-usually to `Event.tsx` as well. Changing only `Event.tsx` looks correct in code
-review and is invisible to real users.
+**Any change to the request form goes in `Index.tsx`.** Styling changes too:
+`/` is the page every singer sees.
 
-Same trap applies to styling. `/` is the landing page every singer sees.
+A third page, `client/pages/Event.tsx` at `/event/:id`, was **deleted**. It was
+a per-event singer page from before the landing page took over, and nothing in
+the app linked to it. It duplicated the request form, which caused two bugs in
+one session: a duet feature and a styling pass both shipped to it instead of to
+`Index.tsx` and were invisible to users. Do not reintroduce it.
+
+Event creation is in `HostEvents.tsx` (`/host/events`) and the Start Shift modal
+in `Host.tsx`. Both call `upsertEvent`.
 
 ## Singer identity grouping
 
 `client/lib/identity.ts` groups every request in an event, **including completed
-ones**, into "people" by union-find over shared IP and shared device id. This is
-what catches a singer who performed earlier and re-submits under a new name.
+ones**, into "people" by union-find over shared IP and shared device id. This
+catches a singer who performed earlier and re-submits under a new name, which
+the old active-queue-only check missed.
 
-- Placeholder values `"host"`, `"unknown"` and empty strings are deliberately
-  excluded from linking, so host-entered songs never group with real singers.
-- Labels (P1, P2...) are per event, derived at render time, ordered by first
-  appearance. They are not stored and can renumber if groups merge.
-- Colour is only assigned to people who used more than one name, so a coloured
+- Placeholders `"host"`, `"unknown"` and empty strings are excluded from
+  linking, so host-entered songs never group with real singers.
+- Labels (P1, P2...) are per event, derived at render, ordered by first
+  appearance. Not stored; they can renumber if two groups merge.
+- Colour is assigned only to people who used more than one name, so a coloured
   badge always means "look at this".
 - On venue wifi everyone shares a public IP, so **device id is the load-bearing
-  signal**. If device ids ever stop persisting, the whole room collapses into
-  one person.
+  signal**. If device ids stop persisting, the whole room collapses into one
+  person.
 
 Covered by `client/lib/identity.spec.ts`. Run `npx vitest run` before shipping
 changes to it.
 
+## Singers are anonymous. Never change this.
+
+End users do NOT authenticate. No account, no email, no login. Requests are
+submitted anonymously through the public form in `Index.tsx` using the
+publishable key.
+
+Supabase Auth applies to `/host/login` only. If a change would make a singer
+sign in, or add any step before they can submit a song, it is wrong. Friction
+here directly reduces the number of requests coming in during an event.
+
+Anonymous insert and read policies are recreated in section 0 of
+`supabase-rls-step2.sql` so they survive any RLS change.
+
 ## Build and deploy
 
 - Vite outputs to `dist/spa`, **not** `dist`. `vercel.json` sets
-  `outputDirectory` accordingly. Removing that produces a 404 on every route.
-- Env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are inlined at build
-  time. Changing them requires a redeploy, not just a restart.
+  `outputDirectory`. Removing it gives a 404 on every route.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are inlined at build time.
+  Changing them needs a redeploy.
 - Without them `getSupabase()` returns null and all 12 call sites silently
-  no-op, falling back to per-browser localStorage. The app looks fine and
+  no-op, falling back to per-browser localStorage. The app looks healthy and
   nothing syncs between devices.
 - Push with `PUSH.bat`. It clears stale `.git/*.lock` files first; a leftover
-  lock silently blocks `git add` and results in an empty-looking push.
+  lock silently blocks `git add` and produces an empty-looking push.
+
+## Mobile
+
+Singers are on phones, often old ones. Below 640px, `backdrop-filter` is
+disabled and the grain layer is hidden for performance. Tap targets are 44px on
+phones. Keep it that way.
 
 ## Known state
 
-- Host login is `djross` / `merlinthedog`, hashed in-browser and stored in
+- Host login is `djross` / `merlinthedog`, hashed in-browser, stored in
   `localStorage` per device. Not real security. Migrating to Supabase Auth is
   the next planned job.
 - `supabase-rls-step2.sql` is written but **must not run until that migration
-  lands**, because it restricts writes to `authenticated` and the host is
-  currently `anon`.
+  lands**: it restricts writes to `authenticated` and the host is currently
+  `anon`.
 - Singer IP addresses are readable by anyone with the public key until step 2
   runs.
-- 8 pre-existing TypeScript errors, mostly union narrowing on `res.reason`.
+- 7 pre-existing TypeScript errors, mostly union narrowing on `res.reason`.
   They do not block the build. Compare against baseline before assuming a
   change introduced one.

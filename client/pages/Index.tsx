@@ -281,6 +281,10 @@ export default function Index() {
         </CardContent>
       </Card>
 
+      {/* Desktop: queue on the left, submit form on the right.
+          Mobile: plain stack, unchanged. */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-8 gap-8 lg:items-start">
+        <div className="lg:col-span-3 space-y-8 min-w-0">
       {/* Request Queue Summary */}
       <Card className="glass rounded-2xl">
         <CardHeader>
@@ -337,7 +341,10 @@ export default function Index() {
                   Now Singing
                 </p>
                 <div className="bg-primary/10 p-3 rounded-lg border-l-4 border-primary">
-                  <p className="font-semibold text-lg">{nowSinging.singer}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-lg">{nowSinging.singer}</p>
+                    <DuetPill request={nowSinging} />
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {nowSinging.songTitle} • {nowSinging.artist}
                   </p>
@@ -390,6 +397,7 @@ export default function Index() {
                               >
                                 {request.singer}
                               </p>
+                              <DuetPill request={request} inline />
                               <p className="text-xs text-muted-foreground truncate">
                                 {request.songTitle} • {request.artist}
                               </p>
@@ -414,7 +422,10 @@ export default function Index() {
                   Up Next
                 </p>
                 <div className="bg-accent/10 p-3 rounded-lg border-l-4 border-accent ring-2 ring-accent/30">
-                  <p className="font-semibold text-lg">{onDeck.singer}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-lg">{onDeck.singer}</p>
+                    <DuetPill request={onDeck} />
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {onDeck.songTitle} • {onDeck.artist}
                   </p>
@@ -440,6 +451,7 @@ export default function Index() {
                               <p className="font-semibold truncate">
                                 {request.singer}
                               </p>
+                              <DuetPill request={request} inline />
                               <p className="text-xs text-muted-foreground truncate">
                                 {request.songTitle} • {request.artist}
                               </p>
@@ -490,9 +502,14 @@ export default function Index() {
         </CardContent>
       </Card>
 
+        </div>
+
+        <div className="lg:col-span-2 space-y-8 min-w-0 lg:sticky lg:top-24">
       {/* Submission Form */}
       <div id="submit-form-section">
         <RequestSubmissionForm eventId={activeEvent.id} isClosed={isClosed} />
+      </div>
+        </div>
       </div>
     </div>
   );
@@ -760,5 +777,33 @@ function RequestSubmissionForm({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Duet indicator for the singer-facing display.
+ * Shown wherever a name appears in the public queue so the room can see that
+ * a number is a duet, and who it is with.
+ */
+function DuetPill({
+  request,
+  inline = false,
+}: {
+  request?: { isDuo?: boolean; partner?: string } | null;
+  inline?: boolean;
+}) {
+  if (!request?.isDuo) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border border-teal-400/50 bg-teal-500/20 font-bold text-teal-700 dark:text-teal-200 whitespace-nowrap",
+        inline ? "mt-0.5 px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs",
+      )}
+      title={
+        request.partner ? `Duet with ${request.partner}` : "Duet / group song"
+      }
+    >
+      🎤🎤 Duet{request.partner ? ` · ${request.partner}` : ""}
+    </span>
   );
 }

@@ -58,6 +58,7 @@ const TERMS_KEY = "karaoke_terms"; // map of eventId -> terms text
 const DEFAULT_TERMS_KEY = "karaoke_defaultTerms"; // global default terms
 const USERS_KEY = "karaoke_users"; // host users
 const HOST_USER_KEY = "karaoke_hostUser"; // current authed username
+const AUTH_MODE_KEY = "karaoke_authMode"; // "supabase" | "legacy"
 
 type RawEventItem = Partial<EventItem> & Record<string, unknown>;
 
@@ -1386,7 +1387,126 @@ export function logoutHost() {
   try {
     setHostAuthed(false);
     setAuthedUsername(null);
+    localStorage.removeItem(AUTH_MODE_KEY);
   } catch {}
+  // Also end the Supabase session if one exists.
+  try {
+    getSupabase()
+      ?.auth.signOut()
+      .catch(() => {});
+  } catch {}
+}
+
+/* ---------------------------------------------------------------------------
+   Host authentication
+   ---------------------------------------------------------------------------
+   Two modes, deliberately:
+
+   "supabase" - a real Supabase Auth session. Required before
+                supabase-rls-step2.sql can be run, because that script
+                restricts writes to the `authenticated` role.
+
+   "legacy"   - the original in-browser SHA-256 check against localStorage.
+                Kept as a fallback so a Supabase misconfiguration can never
+                lock the host out of their own dashboard mid-event.
+
+   Call getAuthMode() to see which one the current session is using.
+--------------------------------------------------------------------------- */
+
+export type AuthMode = "supabase" | "legacy" | null;
+
+export function getAuthMode(): AuthMode {
+  const v = localStorage.getItem(AUTH_MODE_KEY);
+  return v === "supabase" || v === "legacy" ? v : null;
+}
+
+function setAuthMode(mode: AuthMode) {
+  if (mode) localStorage.setItem(AUTH_MODE_KEY, mode);
+  else localStorage.removeItem(AUTH_MODE_KEY);
+}
+
+/**
+ * Attempt a real Supabase Auth sign-in.
+ * Returns false (rather than throwing) so the caller can fall back.
+ */
+export async function signInWithSupabase(
+  email: string,
+  password: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const supa = getSupabase();
+  if (!supa) return { ok: false, reason: "Supabase is not configured" };
+  try {
+    const { data, error } = await supa.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) return { ok: false, reason: error.message };
+    if (!data.session) return { ok: false, reason: "No session returned" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Re-checks the Supabase session on load and keeps the synchronous
+ * isHostAuthed() flag in step with it. Safe to call when signed out.
+ */
+export async function refreshHostSession(): Promise<boolean> {
+  const supa = getSupabase();
+  if (!supa) return false;
+  try {
+    const { data } = await supa.auth.getSession();
+    const live = !!data.session;
+    if (live) {
+      setHostAuthed(true);
+      setAuthMode("supabase");
+      const email = data.session?.user?.email;
+      if (email) setAuthedUsername(email);
+    } else if (getAuthMode() === "supabase") {
+      // The Supabase session expired. Legacy sessions are left alone.
+      setHostAuthed(false);
+      setAuthMode(null);
+    }
+    return live;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Single entry point used by the login page.
+ * Tries Supabase Auth first when the identifier looks like an email, then
+ * falls back to the legacy local check.
+ */
+export async function loginHost(
+  identifier: string,
+  password: string,
+): Promise<{ ok: boolean; mode?: AuthMode; reason?: string }> {
+  const id = identifier.trim();
+
+  if (id.includes("@") && getSupabase()) {
+    const res = await signInWithSupabase(id, password);
+    if (res.ok) {
+      setHostAuthed(true);
+      setAuthedUsername(id);
+      setAuthMode("supabase");
+      return { ok: true, mode: "supabase" };
+    }
+    // Fall through to legacy so a bad Supabase config is never fatal.
+    console.warn("[Karaoke] Supabase sign-in failed, trying legacy:", res.reason);
+  }
+
+  await ensureDefaultUser();
+  const ok = await verifyUser(id, password);
+  if (ok) {
+    setHostAuthed(true);
+    setAuthedUsername(id);
+    setAuthMode("legacy");
+    return { ok: true, mode: "legacy" };
+  }
+
+  return { ok: false, reason: "Incorrect username or password" };
 }
 
 export interface HostUserOptions {
