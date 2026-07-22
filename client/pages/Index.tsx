@@ -509,6 +509,8 @@ function RequestSubmissionForm({
     singer: "",
     songTitle: "",
     artist: "",
+    isDuo: false,
+    partner: "",
   });
   const [tos, setTos] = useState(false);
   const [error, setError] = useState<string>("");
@@ -516,6 +518,8 @@ function RequestSubmissionForm({
     singer: string;
     songTitle: string;
     artist: string;
+    isDuo?: boolean;
+    partner?: string;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -542,6 +546,8 @@ function RequestSubmissionForm({
         singer: form.singer,
         songTitle: form.songTitle,
         artist: form.artist,
+        isDuo: form.isDuo,
+        partner: form.isDuo ? form.partner : "",
       });
 
       if (!res.ok) {
@@ -555,8 +561,16 @@ function RequestSubmissionForm({
         singer: form.singer,
         songTitle: form.songTitle,
         artist: form.artist,
+        isDuo: form.isDuo,
+        partner: form.partner,
       });
-      setForm({ singer: "", songTitle: "", artist: "" });
+      setForm({
+        singer: "",
+        songTitle: "",
+        artist: "",
+        isDuo: false,
+        partner: "",
+      });
       setTos(false);
 
       // Auto-hide success message after 5 seconds
@@ -597,6 +611,12 @@ function RequestSubmissionForm({
             <strong>{success.singer}</strong> - {success.songTitle} by{" "}
             {success.artist}
           </p>
+          {success.isDuo && (
+            <p className="inline-flex items-center gap-2 rounded-full border border-teal-500/40 bg-teal-500/15 px-3 py-1.5 text-sm font-semibold text-teal-700 dark:text-teal-300">
+              🎤🎤 Duet
+              {success.partner ? ` with ${success.partner}` : ""}
+            </p>
+          )}
           <p className="text-muted-foreground">
             Your request is pending approval. Once approved, you'll see your
             spot in the singing order below. The host will review and add you to
@@ -658,12 +678,62 @@ function RequestSubmissionForm({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Duet / group song */}
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+            <label
+              htmlFor="isDuo"
+              className="flex items-start gap-3 cursor-pointer"
+            >
+              <Checkbox
+                id="isDuo"
+                checked={form.isDuo}
+                onCheckedChange={(v) =>
+                  setForm({
+                    ...form,
+                    isDuo: Boolean(v),
+                    partner: v ? form.partner : "",
+                  })
+                }
+                disabled={submitting}
+                className="mt-0.5 h-5 w-5"
+              />
+              <span className="grid gap-0.5 leading-tight">
+                <span className="font-semibold">
+                  🎤🎤 This is a duet or group song
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Tick this if more than one of you is singing.
+                </span>
+              </span>
+            </label>
+            {form.isDuo && (
+              <div className="space-y-2 pl-8">
+                <Label htmlFor="partner" className="text-sm">
+                  Who’s singing with you?{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </Label>
+                <Input
+                  id="partner"
+                  placeholder="e.g. Sarah, or Sarah &amp; Mike"
+                  value={form.partner}
+                  onChange={(e) =>
+                    setForm({ ...form, partner: e.target.value })
+                  }
+                  disabled={submitting}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
             <Checkbox
               id="tos"
               checked={tos}
               onCheckedChange={(v) => setTos(Boolean(v))}
               disabled={submitting}
+              className="h-5 w-5"
             />
             <Label htmlFor="tos" className="text-sm cursor-pointer">
               I accept the Terms of Service
