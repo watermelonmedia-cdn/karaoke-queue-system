@@ -1,5 +1,5 @@
 /** @import must precede all other statements */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -105,6 +105,154 @@
 
   body {
     @apply bg-background text-foreground;
+    font-feature-settings:
+      "cv02","cv03","cv04","cv11";
+  }
+
+  /* Display face for headings. Body stays Inter for legibility. */
+  h1, h2, h3, .font-display {
+    font-family: "Outfit", "Inter", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------------
+     Stage & spotlight
+     A dark house with warm gold light thrown across it. Applied to <body>
+     so every page sits on the same stage.
+     --------------------------------------------------------------------- */
+  .stage-bg {
+    position: relative;
+    background-color: hsl(var(--background));
+  }
+
+  .stage-bg::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(
+        60rem 40rem at 15% -10%,
+        hsl(var(--primary) / 0.28),
+        transparent 60%
+      ),
+      radial-gradient(
+        45rem 35rem at 95% 0%,
+        hsl(var(--accent) / 0.16),
+        transparent 55%
+      ),
+      radial-gradient(
+        50rem 50rem at 50% 110%,
+        hsl(var(--primary) / 0.14),
+        transparent 60%
+      );
+  }
+
+  /* Fine grain so the large flat areas do not band on cheap phone screens */
+  .stage-bg::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Keep real content above the lighting layers */
+  .stage-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Glass panel used for cards that should feel lit from within */
+  .glass {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--card) / 0.85),
+      hsl(var(--card) / 0.65)
+    );
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.9);
+    box-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.06) inset,
+      0 20px 40px -24px hsl(260 60% 3% / 0.9);
+  }
+
+  /* The spotlit card: now singing, hero moments */
+  .spotlight {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary) / 0.22),
+      hsl(var(--accent) / 0.10) 60%,
+      transparent
+    );
+    border: 1px solid hsl(var(--primary) / 0.45);
+    box-shadow:
+      0 0 0 1px hsl(var(--primary) / 0.08),
+      0 24px 60px -30px hsl(var(--primary) / 0.65);
+  }
+
+  .spotlight::before {
+    content: "";
+    position: absolute;
+    top: -60%;
+    left: -10%;
+    width: 55%;
+    height: 220%;
+    background: radial-gradient(
+      closest-side,
+      hsl(var(--accent) / 0.20),
+      transparent
+    );
+    transform: rotate(12deg);
+    pointer-events: none;
+  }
+
+  /* Gold hairline used to separate stacked sections */
+  .rule-gold {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--accent) / 0.55),
+      transparent
+    );
+  }
+
+  /* Text treatment for the marquee headings */
+  .marquee-text {
+    background: linear-gradient(
+      180deg,
+      hsl(0 0% 100%),
+      hsl(var(--accent) / 0.85)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Small uppercase eyebrow label */
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  /* Respect reduced-motion for every animation we add */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
   }
 
   /* Scrollbar styling for queue list */

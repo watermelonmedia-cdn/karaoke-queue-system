@@ -27,14 +27,19 @@ if (typeof window !== "undefined") {
 function Layout() {
   const settings = getSettings();
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0b0820] to-[#120a34] text-foreground">
-      <Header />
-      <main className="py-6">
-        <Outlet />
-      </main>
-      <footer className="mt-10 py-6 border-t border-border/40 text-center text-xs text-muted-foreground">
-        {settings.footerText}
-      </footer>
+    <div className="stage-bg min-h-screen text-foreground">
+      <div className="stage-content flex min-h-screen flex-col">
+        <Header />
+        <main className="flex-1 py-6 sm:py-8">
+          <Outlet />
+        </main>
+        <footer className="mt-12">
+          <div className="rule-gold opacity-40" />
+          <p className="py-6 text-center text-xs tracking-wide text-muted-foreground">
+            {settings.footerText}
+          </p>
+        </footer>
+      </div>
     </div>
   );
 }

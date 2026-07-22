@@ -231,21 +231,38 @@ export default function EventPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6">
+      <div className="mb-7">
+        <div className="eyebrow text-accent/90 mb-1.5">Tonight’s lineup</div>
         <h1
-          className="text-2xl font-extrabold tracking-tight cursor-pointer hover:underline"
+          className="font-display text-3xl sm:text-5xl font-extrabold leading-[1.05] cursor-pointer marquee-text"
           onClick={() => setView("queue")}
         >
           {event.name}
         </h1>
-        <p className="text-sm text-muted-foreground">
-          {new Date(event.datetime).toLocaleString()} • {event.location}
+        <p className="mt-2 text-sm text-muted-foreground">
+          {new Date(event.datetime).toLocaleString()} · {event.location}
         </p>
-        <p
-          className={`mt-2 text-sm font-semibold ${requestsOpen ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}
+        <div className="mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold backdrop-blur"
+          style={{
+            borderColor: requestsOpen
+              ? "hsl(152 60% 45% / 0.5)"
+              : "hsl(var(--destructive) / 0.5)",
+            background: requestsOpen
+              ? "hsl(152 60% 40% / 0.12)"
+              : "hsl(var(--destructive) / 0.12)",
+          }}
         >
-          {requestsOpen ? "Song requests are open" : "Song requests are closed"}
-        </p>
+          <span
+            className={`h-2 w-2 rounded-full ${requestsOpen ? "bg-emerald-400 animate-pulse" : "bg-destructive"}`}
+          />
+          <span
+            className={
+              requestsOpen ? "text-emerald-300" : "text-destructive"
+            }
+          >
+            {requestsOpen ? "Requests are open" : "Requests are closed"}
+          </span>
+        </div>
       </div>
 
       {!requestsOpen && (
@@ -258,54 +275,86 @@ export default function EventPage() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <button
           type="button"
           onClick={() => setView("request")}
           disabled={!requestsOpen}
           aria-disabled={!requestsOpen}
-          className={`rounded-lg border p-6 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${view === "request" ? "bg-primary/10 border-primary ring-1 ring-primary/40" : "bg-card/40 hover:bg-card/70"}`}
+          className={`group relative overflow-hidden rounded-2xl border p-6 text-left transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+            view === "request"
+              ? "spotlight"
+              : "glass hover:-translate-y-0.5 hover:border-accent/40"
+          }`}
         >
-          <h3 className="text-xl font-bold mb-2">Request a Song</h3>
-          <p className="text-sm text-muted-foreground">
-            {requestsOpen
-              ? "Submit your name, song and artist to join the lineup."
-              : "The host has paused new song submissions."}
-          </p>
+          <div className="relative flex items-start gap-4">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary to-accent text-xl shadow-lg shadow-primary/30">
+              🎤
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-display text-xl font-extrabold mb-1">
+                Request a Song
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {requestsOpen
+                  ? "Add your name, song and artist to join the lineup."
+                  : "The host has paused new song submissions."}
+              </p>
+            </div>
+          </div>
         </button>
       </div>
 
-      <Card className="mb-8 bg-gradient-to-r from-primary/20 to-accent/20 border-primary/30">
-        <CardHeader className="mr-[200px] pr-[200px]">
-          <CardTitle className="text-xl self-start w-auto">
-            Now Singing
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row items-start sm:justify-between gap-6">
-            <div className="flex-1 min-w-0">
-              {now ? (
-                <>
-                  <p className="font-semibold truncate">
-                    Now Singing: {now.singer} — {now.songTitle} — {now.artist}
-                  </p>
-                  {(() => {
-                    const next = getOnDeck(id);
-                    return next ? (
-                      <p className="text-sm text-muted-foreground truncate">
-                        On deck: {next.singer} — {next.songTitle} —{" "}
-                        {next.artist}
-                      </p>
-                    ) : null;
-                  })()}
-                </>
-              ) : (
-                <p className="text-muted-foreground">
-                  No one is singing right now.
+      <Card className="spotlight mb-8 rounded-2xl">
+        <CardContent className="relative py-6">
+          {now ? (
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <div className="eyebrow mb-1.5 flex items-center gap-2 text-accent">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                  </span>
+                  On stage now
+                </div>
+                <p className="font-display text-3xl font-extrabold leading-tight sm:text-4xl">
+                  {now.singer}
                 </p>
-              )}
+                <p className="mt-1 truncate text-base text-foreground/80 sm:text-lg">
+                  {now.songTitle}
+                  {now.artist ? (
+                    <span className="text-foreground/50"> — {now.artist}</span>
+                  ) : null}
+                </p>
+              </div>
+              {(() => {
+                const next = getOnDeck(id);
+                return next ? (
+                  <div className="min-w-0 shrink-0 rounded-xl border border-white/10 bg-background/35 px-4 py-3 backdrop-blur sm:max-w-[46%]">
+                    <div className="eyebrow mb-1 text-muted-foreground">
+                      Up next
+                    </div>
+                    <p className="truncate font-display text-lg font-bold">
+                      {next.singer}
+                    </p>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {next.songTitle}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
             </div>
-          </div>
+          ) : (
+            <div className="py-3 text-center">
+              <div className="mb-1 text-3xl">🎶</div>
+              <p className="font-display text-xl font-bold">
+                The stage is open
+              </p>
+              <p className="text-sm text-muted-foreground">
+                No one is singing right now. Get your request in.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -348,9 +397,11 @@ export default function EventPage() {
             </CardContent>
           </Card>
         ) : view === "request" ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Submit a Song</CardTitle>
+          <Card className="glass rounded-2xl">
+            <CardHeader className="pb-3">
+              <CardTitle className="font-display text-xl">
+                Submit a Song
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -456,22 +507,26 @@ export default function EventPage() {
         ) : null}
 
         {/* Right column: Singer List (always visible) */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Singer List</CardTitle>
+        <Card className="glass rounded-2xl">
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-xl">Singer List</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-center">
-              <div className="rounded-md border p-3">
-                <div className="text-2xl font-bold">{uniqueSingers}</div>
-                <div className="text-xs text-muted-foreground">
-                  Active Queue
+            <div className="grid grid-cols-2 gap-3 mb-5 text-center">
+              <div className="rounded-xl border border-white/10 bg-background/30 p-3">
+                <div className="font-display text-3xl font-extrabold text-accent">
+                  {uniqueSingers}
+                </div>
+                <div className="eyebrow mt-1 text-muted-foreground">
+                  In the queue
                 </div>
               </div>
-              <div className="rounded-md border p-3">
-                <div className="text-2xl font-bold">{pendingCount}</div>
-                <div className="text-xs text-muted-foreground">
-                  Pending Requests
+              <div className="rounded-xl border border-white/10 bg-background/30 p-3">
+                <div className="font-display text-3xl font-extrabold">
+                  {pendingCount}
+                </div>
+                <div className="eyebrow mt-1 text-muted-foreground">
+                  Awaiting host
                 </div>
               </div>
             </div>
