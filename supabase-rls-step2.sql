@@ -79,19 +79,25 @@ grant insert (
 -- Only safe once host login is real auth. Before that this locks you out of
 -- approving and completing songs.
 -- ---------------------------------------------------------------------------
+-- Each block drops BOTH the old public policy and the host policy it is about
+-- to create. Dropping only the old name left these non-idempotent: a second
+-- run failed with 42710 "policy already exists".
 drop policy if exists requests_public_update on public.requests;
+drop policy if exists requests_host_update on public.requests;
 create policy requests_host_update
   on public.requests for update
   to authenticated
   using (true) with check (true);
 
 drop policy if exists requests_public_delete on public.requests;
+drop policy if exists requests_host_delete on public.requests;
 create policy requests_host_delete
   on public.requests for delete
   to authenticated
   using (true);
 
 drop policy if exists events_public_write on public.events;
+drop policy if exists events_host_write on public.events;
 create policy events_host_write
   on public.events for all
   to authenticated
