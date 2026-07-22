@@ -21,9 +21,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  buildIdentityIndex,
+  agoLabel,
+  describePerson,
+  type PersonIdentity,
+} from "@/lib/identity";
+import {
   bootstrapEvents,
   ensureSingerInOrder,
-  getDuplicateSingerMaps,
   getEvents,
   getHostSelectedEvent,
   getNowSinging,
@@ -256,39 +261,19 @@ export default function HostPage() {
     }
   }, [events]);
 
-  const dupMaps = useMemo(
+  // Session-wide identity index. Unlike the old duplicate-IP check this
+  // includes COMPLETED requests, so a singer who performed earlier under a
+  // different name is still linked to their new submission.
+  const identity = useMemo(
     () =>
       eventId
-        ? getDuplicateSingerMaps(eventId)
-        : {
-            deviceSingerMap: new Map<string, string[]>(),
-            ipSingerMap: new Map<string, string[]>(),
-          },
+        ? buildIdentityIndex(getRequestsByEvent(eventId))
+        : buildIdentityIndex([]),
     [eventId, tick],
   );
 
-  // Color palette for highlighting different duplicate IP groups
-  const DUP_COLORS = [
-    "bg-blue-500/20 ring-1 ring-blue-500/50",
-    "bg-purple-500/20 ring-1 ring-purple-500/50",
-    "bg-pink-500/20 ring-1 ring-pink-500/50",
-    "bg-cyan-500/20 ring-1 ring-cyan-500/50",
-    "bg-orange-500/20 ring-1 ring-orange-500/50",
-    "bg-green-500/20 ring-1 ring-green-500/50",
-  ];
-
-  // Create a mapping of duplicate IPs to colors
-  const ipColorMap = useMemo(() => {
-    const map = new Map<string, string>();
-    const duplicateIps = Array.from(dupMaps.ipSingerMap.entries())
-      .filter(([_, singers]) => singers.length > 1)
-      .map(([ip, _]) => ip)
-      .sort();
-    duplicateIps.forEach((ip, index) => {
-      map.set(ip, DUP_COLORS[index % DUP_COLORS.length]);
-    });
-    return map;
-  }, [dupMaps]);
+  const personForRequest = (r?: RequestItem | null) =>
+    r ? identity.byRequestId.get(r.id) : undefined;
 
   const singerOrder = useMemo(
     () => (eventId ? getSingerOrder(eventId) : []),
@@ -917,6 +902,64 @@ export default function HostPage() {
             </Card>
           )}
 
+          {identity.flagged.length > 0 && (
+            <Card className="border-red-500/40 bg-red-500/5">
+              <CardHeader className="py-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <span>⚠️</span>
+                  Same person, different names ({identity.flagged.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <p className="text-xs text-muted-foreground mb-3">
+                  These devices have submitted under more than one name tonight
+                  — including songs already performed.
+                </p>
+                <ul className="space-y-2">
+                  {identity.flagged.map((p) => (
+                    <li
+                      key={p.id}
+                      className={`rounded-md p-2.5 text-sm ${p.rowClass} ring-1 ring-border`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.badgeClass}`}
+                        >
+                          {p.short}
+                        </span>
+                        <span className="font-medium">
+                          {p.aliases.map((a) => `"${a.name}"`).join("  →  ")}
+                        </span>
+                        {p.completedCount > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            {p.completedCount} already sung
+                          </span>
+                        )}
+                        {p.activeCount > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+                            {p.activeCount} in queue
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {p.aliases.map((a) => (
+                          <span key={a.name}>
+                            "{a.name}" · {agoLabel(a.lastAt)}
+                          </span>
+                        ))}
+                        {p.ips.length > 0 && (
+                          <span className="font-mono opacity-70">
+                            {p.ips.join(", ")}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -969,8 +1012,8 @@ export default function HostPage() {
                         <th className="text-left py-2 px-2 font-semibold min-w-32">
                           Artist
                         </th>
-                        <th className="text-left py-2 px-2 font-semibold min-w-36">
-                          IP Address
+                        <th className="text-left py-2 px-2 font-semibold min-w-44">
+                          Who / Device
                         </th>
                         <th className="text-left py-2 px-2 font-semibold">
                           Status
@@ -998,11 +1041,7 @@ export default function HostPage() {
                             key;
                           const isUpNext =
                             i === 0 && current?.status === "approved";
-                          const ip = current?.ip || "—";
-                          const isDuplicateIp =
-                            ip !== "—" &&
-                            dupMaps.ipSingerMap.has(ip) &&
-                            (dupMaps.ipSingerMap.get(ip)?.length || 0) > 1;
+                          const person = personForRequest(current);
                           return (
                             <tr
                               key={key}
@@ -1022,13 +1061,14 @@ export default function HostPage() {
                                 {i + 1}
                               </td>
                               <td className="py-3 px-2">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-medium">{name}</span>
                                   {isUpNext && (
                                     <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/30 text-amber-600 dark:text-amber-400">
                                       NEXT
                                     </span>
                                   )}
+                                  <DuoBadge request={current} />
                                 </div>
                               </td>
                               <td className="py-3 px-2">
@@ -1037,24 +1077,12 @@ export default function HostPage() {
                               <td className="py-3 px-2">
                                 {current?.artist || "—"}
                               </td>
-                              <td
-                                className={`py-3 px-2 font-mono text-xs rounded px-2 py-1 transition font-semibold ${
-                                  isDuplicateIp
-                                    ? ipColorMap.get(ip) || "bg-muted/30"
-                                    : "bg-muted/30"
-                                }`}
-                                title={
-                                  isDuplicateIp
-                                    ? `⚠️ This IP has ${dupMaps.ipSingerMap.get(ip)?.length || 0} different singer names: ${dupMaps.ipSingerMap.get(ip)?.join(", ")}`
-                                    : undefined
-                                }
-                              >
-                                {ip}
-                                {isDuplicateIp && (
-                                  <span className="ml-1" title="Duplicate IP">
-                                    ⚠️
-                                  </span>
-                                )}
+                              <td className="py-3 px-2">
+                                <PersonCell
+                                  person={person}
+                                  ip={current?.ip}
+                                  currentName={current?.singer}
+                                />
                               </td>
                               <td className="py-3 px-2">
                                 <span
@@ -1247,8 +1275,8 @@ export default function HostPage() {
                         <th className="text-left py-2 px-2 font-semibold min-w-32">
                           Artist
                         </th>
-                        <th className="text-left py-2 px-2 font-semibold min-w-36">
-                          IP Address
+                        <th className="text-left py-2 px-2 font-semibold min-w-44">
+                          Who / Device
                         </th>
                         <th className="text-left py-2 px-2 font-semibold">
                           Submitted
@@ -1260,39 +1288,26 @@ export default function HostPage() {
                     </thead>
                     <tbody>
                       {pending.map((r) => {
-                        const ip = r.ip || "unknown";
-                        const isDuplicateIp =
-                          ip !== "unknown" &&
-                          dupMaps.ipSingerMap.has(ip) &&
-                          (dupMaps.ipSingerMap.get(ip)?.length || 0) > 1;
+                        const person = personForRequest(r);
                         return (
                           <tr
                             key={r.id}
-                            className="border-b hover:bg-muted/50 transition"
+                            className={`border-b hover:bg-muted/50 transition ${person?.multiName ? person.rowClass : ""}`}
                           >
                             <td className="py-3 px-2 font-medium">
-                              {r.singer}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span>{r.singer}</span>
+                                <DuoBadge request={r} />
+                              </div>
                             </td>
                             <td className="py-3 px-2">{r.songTitle}</td>
                             <td className="py-3 px-2">{r.artist}</td>
-                            <td
-                              className={`py-3 px-2 font-mono text-xs rounded px-2 py-1 transition font-semibold ${
-                                isDuplicateIp
-                                  ? ipColorMap.get(ip) || "bg-muted/30"
-                                  : "bg-muted/30"
-                              }`}
-                              title={
-                                isDuplicateIp
-                                  ? `⚠️ This IP has ${dupMaps.ipSingerMap.get(ip)?.length || 0} different singer names: ${dupMaps.ipSingerMap.get(ip)?.join(", ")}`
-                                  : undefined
-                              }
-                            >
-                              {ip}
-                              {isDuplicateIp && (
-                                <span className="ml-1" title="Duplicate IP">
-                                  ⚠️
-                                </span>
-                              )}
+                            <td className="py-3 px-2">
+                              <PersonCell
+                                person={person}
+                                ip={r.ip}
+                                currentName={r.singer}
+                              />
                             </td>
                             <td className="py-3 px-2 text-xs text-muted-foreground whitespace-nowrap">
                               {new Date(r.createdAt).toLocaleTimeString()}
@@ -1426,6 +1441,93 @@ export default function HostPage() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** Small "DUET" pill shown next to a singer name. */
+function DuoBadge({ request }: { request?: RequestItem | null }) {
+  if (!request?.isDuo) return null;
+  return (
+    <span
+      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-700 dark:text-teal-300 ring-1 ring-teal-500/40 whitespace-nowrap"
+      title={
+        request.partner
+          ? `Duet with ${request.partner}`
+          : "Marked as a duet / group song"
+      }
+    >
+      DUET{request.partner ? ` · ${request.partner}` : ""}
+    </span>
+  );
+}
+
+/**
+ * Shows which physical person a request belongs to. When the same device or IP
+ * has used more than one name tonight the cell is colour-coded and lists every
+ * alias with how long ago it was used.
+ */
+function PersonCell({
+  person,
+  ip,
+  currentName,
+}: {
+  person?: PersonIdentity;
+  ip?: string;
+  currentName?: string;
+}) {
+  const displayIp = ip && ip !== "unknown" ? ip : "no IP";
+
+  if (!person) {
+    return (
+      <span className="font-mono text-xs text-muted-foreground">
+        {displayIp}
+      </span>
+    );
+  }
+
+  const others = person.aliases.filter(
+    (a) =>
+      a.name.trim().toLowerCase() !== (currentName || "").trim().toLowerCase(),
+  );
+
+  return (
+    <div className="flex flex-col gap-1" title={describePerson(person)}>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${person.badgeClass}`}
+        >
+          {person.short}
+        </span>
+        {person.multiName && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/25 text-red-700 dark:text-red-300 ring-1 ring-red-500/50 whitespace-nowrap">
+            ⚠ {person.aliases.length} NAMES
+          </span>
+        )}
+        {person.completedCount > 0 && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground whitespace-nowrap"
+            title={`${person.completedCount} song(s) already performed tonight`}
+          >
+            sung {person.completedCount}×
+          </span>
+        )}
+      </div>
+      {person.multiName && others.length > 0 && (
+        <div className="text-[11px] leading-tight text-muted-foreground">
+          also:{" "}
+          {others.map((a, i) => (
+            <span key={a.name}>
+              {i > 0 && ", "}
+              <span className="font-medium text-foreground/80">"{a.name}"</span>{" "}
+              <span className="opacity-70">{agoLabel(a.lastAt)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <span className="font-mono text-[10px] text-muted-foreground/70">
+        {displayIp}
+      </span>
     </div>
   );
 }

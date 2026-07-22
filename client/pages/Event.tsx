@@ -34,7 +34,13 @@ export default function EventPage() {
   const { id } = useParams();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [tos, setTos] = useState(false);
-  const [form, setForm] = useState({ singer: "", songTitle: "", artist: "" });
+  const [form, setForm] = useState({
+    singer: "",
+    songTitle: "",
+    artist: "",
+    isDuo: false,
+    partner: "",
+  });
   const [error, setError] = useState<string>("");
   const [tick, setTick] = useState(0);
   const [view, setView] = useState<"choose" | "request" | "queue">("queue");
@@ -201,12 +207,20 @@ export default function EventPage() {
       singer: form.singer,
       songTitle: form.songTitle,
       artist: form.artist,
+      isDuo: form.isDuo,
+      partner: form.isDuo ? form.partner : "",
     });
     if (!res.ok) {
       setError(res.reason);
       return;
     }
-    setForm({ singer: "", songTitle: "", artist: "" });
+    setForm({
+      singer: "",
+      songTitle: "",
+      artist: "",
+      isDuo: false,
+      partner: "",
+    });
     setTos(false);
     toast({
       title: "Request received",
@@ -375,6 +389,48 @@ export default function EventPage() {
                       setForm({ ...form, artist: e.target.value })
                     }
                   />
+                </div>
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id="isDuo"
+                      checked={form.isDuo}
+                      onCheckedChange={(v) =>
+                        setForm({
+                          ...form,
+                          isDuo: Boolean(v),
+                          partner: v ? form.partner : "",
+                        })
+                      }
+                      className="mt-0.5"
+                    />
+                    <div className="grid gap-0.5 leading-tight">
+                      <Label htmlFor="isDuo" className="cursor-pointer">
+                        This is a duet / group song
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Tick this if more than one person is singing.
+                      </p>
+                    </div>
+                  </div>
+                  {form.isDuo && (
+                    <div className="space-y-2">
+                      <Label htmlFor="partner">
+                        Who's singing with you?{" "}
+                        <span className="text-muted-foreground font-normal">
+                          (optional)
+                        </span>
+                      </Label>
+                      <Input
+                        id="partner"
+                        value={form.partner}
+                        placeholder="e.g. Sarah, or Sarah &amp; Mike"
+                        onChange={(e) =>
+                          setForm({ ...form, partner: e.target.value })
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Checkbox

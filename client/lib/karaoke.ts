@@ -22,6 +22,10 @@ export interface RequestItem {
   order?: number; // for manual ordering
   startedAt?: number;
   completedAt?: number;
+  /** singer marked this as a duet / group number */
+  isDuo?: boolean;
+  /** optional name(s) of the singing partner(s) */
+  partner?: string;
 }
 
 export interface ArchiveItem {
@@ -619,6 +623,8 @@ async function performRefresh(): Promise<void> {
         order: r.order ?? undefined,
         startedAt: r.started_at ?? undefined,
         completedAt: r.completed_at ?? undefined,
+        isDuo: r.is_duo ?? undefined,
+        partner: r.partner ?? undefined,
       };
     });
     console.log(
@@ -764,10 +770,24 @@ export function addRequest(
     createdAt: Date.now(),
     deviceId,
     ip: newReq.ip,
+    isDuo: newReq.isDuo ?? false,
+    partner: newReq.partner?.trim() || undefined,
   };
   all.push(req);
   setRequests(all);
   return { ok: true, id };
+}
+
+/** Detects a Postgres "column does not exist" style error from Supabase. */
+function isMissingColumnError(error: any): boolean {
+  const msg = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "");
+  return (
+    code === "42703" ||
+    code === "PGRST204" ||
+    msg.includes("column") ||
+    msg.includes("schema cache")
+  );
 }
 
 export async function getClientIP(): Promise<string> {
@@ -795,7 +815,7 @@ export async function addRequestAsync(
   const supa = getSupabase();
   if (supa) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const { error } = await supa.from("requests").insert({
+    const base = {
       id,
       event_id: newReq.eventId,
       singer: newReq.singer.trim(),
@@ -805,7 +825,21 @@ export async function addRequestAsync(
       created_at: Date.now(),
       device_id: getDeviceId(),
       ip,
-    });
+    };
+    const withDuo = {
+      ...base,
+      is_duo: newReq.isDuo ?? false,
+      partner: newReq.partner?.trim() || null,
+    };
+    let { error } = await supa.from("requests").insert(withDuo);
+    if (error && isMissingColumnError(error)) {
+      // Supabase table has not been migrated yet - fall back so the night
+      // is never blocked by a missing column.
+      console.warn(
+        "[Karaoke] requests table missing is_duo/partner columns; inserting without them. Run the migration in supabase-migrations.sql.",
+      );
+      ({ error } = await supa.from("requests").insert(base));
+    }
     if (error) return { ok: false, reason: error.message };
     // Use the in-flight guard to fetch all requests after insert
     await refreshRequestsFromRemote();
@@ -836,9 +870,15 @@ export async function addRequestAsHost(
       created_at: Date.now(),
       device_id: "host",
       ip: "host",
+      is_duo: params.isDuo ?? false,
+      partner: params.partner?.trim() || null,
     };
     try {
-      const { error } = await supa.from("requests").insert(payload);
+      let { error } = await supa.from("requests").insert(payload);
+      if (error && isMissingColumnError(error)) {
+        const { is_duo, partner, ...fallback } = payload;
+        ({ error } = await supa.from("requests").insert(fallback));
+      }
       if (error) return { ok: false, reason: error.message };
       // For "performing", we need transitionRequest to handle startedAt and marking previous as complete
       // For other statuses, the insert already set them correctly
