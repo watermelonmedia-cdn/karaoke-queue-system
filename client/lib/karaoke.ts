@@ -544,13 +544,23 @@ async function performRefresh(): Promise<void> {
     // 42501 rather than omitting them. Hence the retry below.
     const HOST_COLS = PUBLIC_COLS + ",device_id,ip";
 
+    // Choose the column list UP FRONT from the cached session flag.
+    //
+    // Asking for the host columns and letting it fail was measurably slower for
+    // singers: every refresh cost two round trips, and the 401 could also
+    // trigger a token refresh inside supabase-js. Anonymous visitors are the
+    // common case, so they must take the single-request path.
+    const cols = hasHostSession() ? HOST_COLS : PUBLIC_COLS;
+
     // Typed as any: the two select() calls infer different row shapes, and
     // reassigning would otherwise widen this into a union that loses `id`.
-    let fresh: any = await supa.from("requests").select(HOST_COLS);
+    let fresh: any = await supa.from("requests").select(cols);
 
+    // Safety net only. Reached if the cached flag is stale, e.g. the host's
+    // session expired between refreshes. Not part of the normal path.
     if (fresh.error && isPermissionDeniedError(fresh.error)) {
       console.info(
-        "[Karaoke] No access to ip/device_id (expected when signed out); refetching public columns only.",
+        "[Karaoke] Host columns denied; falling back to public columns.",
       );
       fresh = await supa.from("requests").select(PUBLIC_COLS);
     }
@@ -798,6 +808,22 @@ export function addRequest(
  * column it has no SELECT grant on, which is the expected state for anonymous
  * visitors once supabase-rls-step2.sql has been applied.
  */
+/**
+ * Cheap synchronous check for a host session. Reads the flag written at login
+ * rather than calling supa.auth.getSession(), which is async and would add a
+ * hop to a function that runs on every queue refresh.
+ */
+function hasHostSession(): boolean {
+  try {
+    return (
+      localStorage.getItem(AUTH_MODE_KEY) === "supabase" &&
+      localStorage.getItem(HOST_AUTH_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isPermissionDeniedError(error: any): boolean {
   const code = String(error?.code || "");
   const msg = String(error?.message || "").toLowerCase();
@@ -820,7 +846,16 @@ export async function getClientIP(): Promise<string> {
   const cached = localStorage.getItem(CLIENT_IP_KEY);
   if (cached) return cached;
   try {
-    const res = await fetch("https://api.ipify.org?format=json");
+    // Hard timeout: this is a third-party lookup sitting in front of the
+    // submit button. If it is slow or blocked, the singer should not wait on
+    // it. Losing the IP only weakens duplicate detection slightly, because
+    // device id is the stronger signal anyway.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch("https://api.ipify.org?format=json", {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
     const data = await res.json();
     const ip = data?.ip || "unknown";
     localStorage.setItem(CLIENT_IP_KEY, ip);
@@ -833,8 +868,12 @@ export async function getClientIP(): Promise<string> {
 export async function addRequestAsync(
   newReq: Omit<RequestItem, "id" | "status" | "createdAt" | "deviceId" | "ip">,
 ): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
-  const ip = await getClientIP();
-  await refreshEventsFromRemote();
+  // These two are independent, so run them together rather than back to back.
+  // Serial, they added two round trips to every submission.
+  const [ip] = await Promise.all([
+    getClientIP(),
+    refreshEventsFromRemote().catch(() => {}),
+  ]);
   if (!canAcceptRequests(newReq.eventId)) {
     return { ok: false, reason: "Song requests are currently closed." };
   }
@@ -2112,6 +2151,137 @@ export function moveSingerDown(eventId: string, key: string) {
   const idx = order.indexOf(key);
   if (idx !== -1 && idx < order.length - 1)
     moveSingerToIndex(eventId, key, idx + 1);
+}
+
+/**
+ * Remove ONE song from the queue, leaving the singer in place.
+ *
+ * For the common case of "wrong song" or "I'll skip this one". If it was their
+ * only remaining song the singer is dropped from the ordering too, so the queue
+ * does not keep an empty slot.
+ *
+ * Unlike deleteRequest(), this surfaces failures and updates local state
+ * immediately so the row disappears on click rather than on the next poll.
+ */
+export async function removeSongFromQueue(
+  eventId: string,
+  requestId: string,
+): Promise<{
+  ok: boolean;
+  singerAlsoRemoved: boolean;
+  remaining: number;
+  reason?: string;
+}> {
+  const target = getRequests().find((r) => r.id === requestId);
+  if (!target) {
+    return {
+      ok: false,
+      singerAlsoRemoved: false,
+      remaining: 0,
+      reason: "Request not found",
+    };
+  }
+  const key = singerKey(target.singer);
+
+  const supa = getSupabase();
+  if (supa) {
+    const { error } = await supa.from("requests").delete().eq("id", requestId);
+    if (error) {
+      console.error("[Karaoke] removeSongFromQueue failed:", error.message);
+      return {
+        ok: false,
+        singerAlsoRemoved: false,
+        remaining: 0,
+        reason: error.message,
+      };
+    }
+  }
+
+  setRequests(getRequests().filter((r) => r.id !== requestId));
+
+  // Did that empty them out?
+  const remaining = getRequestsByEvent(eventId).filter(
+    (r) => singerKey(r.singer) === key && r.status !== "complete",
+  ).length;
+
+  let singerAlsoRemoved = false;
+  if (remaining === 0) {
+    removeSingerFromOrder(eventId, key);
+    singerAlsoRemoved = true;
+    try {
+      await persistSingerOrderToRemote(eventId);
+    } catch {}
+  }
+
+  try {
+    await refreshRequestsFromRemote();
+  } catch {}
+
+  return { ok: true, singerAlsoRemoved, remaining };
+}
+
+/**
+ * Fully remove a singer from an event, in real time.
+ *
+ * The old deleteSinger() only dropped the name from the local ordering array.
+ * Their requests stayed `approved` in the database, and because the order is
+ * persisted fire-and-forget, the next refresh could pull the stale order back
+ * and the singer would reappear. From the host's side the button did nothing.
+ *
+ * This deletes their outstanding requests first, so the removal holds even if
+ * the ordering resyncs. Completed songs are left alone: those are history and
+ * belong in the archive.
+ *
+ * Works regardless of status, so a singer who is mid-performance can be pulled
+ * without having to start or complete their song first.
+ */
+export async function removeSingerCompletely(
+  eventId: string,
+  key: string,
+): Promise<{ ok: boolean; removed: number; reason?: string }> {
+  const doomed = getRequestsByEvent(eventId).filter(
+    (r) => singerKey(r.singer) === key && r.status !== "complete",
+  );
+
+  const supa = getSupabase();
+  if (supa && doomed.length) {
+    const { error } = await supa
+      .from("requests")
+      .delete()
+      .in(
+        "id",
+        doomed.map((r) => r.id),
+      );
+    if (error) {
+      console.error("[Karaoke] removeSingerCompletely failed:", error.message);
+      return { ok: false, removed: 0, reason: error.message };
+    }
+  }
+
+  // Mirror locally so the UI updates immediately rather than waiting on a poll.
+  setRequests(
+    getRequests().filter(
+      (r) =>
+        !(
+          r.eventId === eventId &&
+          singerKey(r.singer) === key &&
+          r.status !== "complete"
+        ),
+    ),
+  );
+
+  removeSingerFromOrder(eventId, key);
+
+  // Awaited, unlike the old path, so the order cannot be resurrected by a
+  // refresh that lands before the write completes.
+  try {
+    await persistSingerOrderToRemote(eventId);
+  } catch {}
+  try {
+    await refreshRequestsFromRemote();
+  } catch {}
+
+  return { ok: true, removed: doomed.length };
 }
 
 export function deleteSinger(eventId: string, key: string) {

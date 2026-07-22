@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronUp, Trash2, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, Plus, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +51,8 @@ import {
   moveSingerUp,
   moveSingerDown,
   deleteSinger,
+  removeSingerCompletely,
+  removeSongFromQueue,
   getOnDeck,
   logoutHost,
   updateRequestInfo,
@@ -106,6 +108,7 @@ export default function HostPage() {
   });
 
   const [authMode, setAuthMode] = useState<AuthMode>(getAuthMode());
+  const [removingSinger, setRemovingSinger] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authed) nav("/");
@@ -1240,17 +1243,83 @@ export default function HostPage() {
                                         Complete
                                       </Button>
                                     )}
+                                  {/* Remove just this song. Singer stays in
+                                      the queue if they have others. */}
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8 text-destructive"
-                                    title="Delete singer"
-                                    onClick={() => {
-                                      if (
-                                        eventId &&
-                                        confirm(`Remove ${name} from roster?`)
-                                      ) {
-                                        deleteSinger(eventId, key);
+                                    className="h-9 w-9 text-amber-500 hover:bg-amber-500/15"
+                                    title={`Remove this song (${current?.songTitle || "song"}) but keep ${name} in the queue`}
+                                    disabled={
+                                      removingSinger === key || !current?.id
+                                    }
+                                    onClick={async () => {
+                                      if (!eventId || !current?.id) return;
+                                      const others =
+                                        (bySinger.get(key)?.approved?.length ||
+                                          0) +
+                                        (bySinger.get(key)?.performing
+                                          ? 1
+                                          : 0) -
+                                        1;
+                                      const msg =
+                                        others > 0
+                                          ? `Remove "${current.songTitle}"? ${name} stays in the queue with ${others} more song${others === 1 ? "" : "s"}.`
+                                          : `Remove "${current.songTitle}"? It is ${name}'s only song, so they will leave the queue too.`;
+                                      if (!confirm(msg)) return;
+                                      setRemovingSinger(key);
+                                      try {
+                                        const res = await removeSongFromQueue(
+                                          eventId,
+                                          current.id,
+                                        );
+                                        if (!res.ok) {
+                                          alert(
+                                            `Could not remove that song: ${res.reason || "unknown error"}`,
+                                          );
+                                        }
+                                      } finally {
+                                        setRemovingSinger(null);
+                                        setTick((t) => t + 1);
+                                      }
+                                    }}
+                                  >
+                                    <Music className="h-4 w-4" />
+                                  </Button>
+
+                                  {/* Remove the singer and everything queued
+                                      under their name. */}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-9 w-9 text-destructive hover:bg-destructive/15"
+                                    title={`Remove ${name} and all their songs`}
+                                    disabled={removingSinger === key}
+                                    onClick={async () => {
+                                      if (!eventId) return;
+                                      const songCount =
+                                        (bySinger.get(key)?.approved?.length ||
+                                          0) +
+                                        (bySinger.get(key)?.performing ? 1 : 0);
+                                      const msg =
+                                        songCount > 1
+                                          ? `Remove ${name} and all ${songCount} of their queued songs?`
+                                          : `Remove ${name} from the queue?`;
+                                      if (!confirm(msg)) return;
+                                      setRemovingSinger(key);
+                                      try {
+                                        const res =
+                                          await removeSingerCompletely(
+                                            eventId,
+                                            key,
+                                          );
+                                        if (!res.ok) {
+                                          alert(
+                                            `Could not remove ${name}: ${res.reason || "unknown error"}`,
+                                          );
+                                        }
+                                      } finally {
+                                        setRemovingSinger(null);
                                         setTick((t) => t + 1);
                                       }
                                     }}
