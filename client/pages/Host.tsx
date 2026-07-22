@@ -875,32 +875,18 @@ export default function HostPage() {
               </div>
             </CardContent>
           </Card>
-          {now && (
-            <Card className="border-primary/30">
-              <CardContent className="py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">
-                      Now Singing: {now.singer} - {now.songTitle} - {now.artist}
-                    </p>
-                    {eventId &&
-                      (() => {
-                        const next = getOnDeck(eventId);
-                        return next ? (
-                          <p className="text-xs text-muted-foreground truncate">
-                            On deck: {next.singer} - {next.songTitle} -{" "}
-                            {next.artist}
-                          </p>
-                        ) : null;
-                      })()}
-                  </div>
-                  <span className="text-xs rounded px-2 py-1 bg-primary/20 text-primary">
-                    live
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <NightAtAGlance
+            now={now}
+            onDeck={eventId ? getOnDeck(eventId) : undefined}
+            singersInQueue={singerOrder.length}
+            pendingCount={pending.length}
+            sungCount={all.filter((r) => r.status === "complete").length}
+            flaggedCount={identity.flagged.length}
+            nowPerson={personForRequest(now)}
+            onDeckPerson={personForRequest(
+              eventId ? getOnDeck(eventId) : undefined,
+            )}
+          />
 
           {identity.flagged.length > 0 && (
             <Card className="border-red-500/40 bg-red-500/5">
@@ -1062,13 +1048,16 @@ export default function HostPage() {
                               </td>
                               <td className="py-3 px-2">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-medium">{name}</span>
+                                  <span className="font-semibold text-base">
+                                    {name}
+                                  </span>
                                   {isUpNext && (
                                     <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/30 text-amber-600 dark:text-amber-400">
                                       NEXT
                                     </span>
                                   )}
                                   <DuoBadge request={current} />
+                                  <AliasFlag person={person} />
                                 </div>
                               </td>
                               <td className="py-3 px-2">
@@ -1296,8 +1285,11 @@ export default function HostPage() {
                           >
                             <td className="py-3 px-2 font-medium">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span>{r.singer}</span>
+                                <span className="font-semibold text-base">
+                                  {r.singer}
+                                </span>
                                 <DuoBadge request={r} />
+                                <AliasFlag person={person} />
                               </div>
                             </td>
                             <td className="py-3 px-2">{r.songTitle}</td>
@@ -1442,6 +1434,155 @@ export default function HostPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Top-of-dashboard summary built for glancing at across a dark room:
+ * who is on now, who is next, and the four numbers that answer
+ * "how long until I sing" without reading the table.
+ */
+function NightAtAGlance({
+  now,
+  onDeck,
+  singersInQueue,
+  pendingCount,
+  sungCount,
+  flaggedCount,
+  nowPerson,
+  onDeckPerson,
+}: {
+  now?: RequestItem | null;
+  onDeck?: RequestItem | null;
+  singersInQueue: number;
+  pendingCount: number;
+  sungCount: number;
+  flaggedCount: number;
+  nowPerson?: PersonIdentity;
+  onDeckPerson?: PersonIdentity;
+}) {
+  const Slot = ({
+    label,
+    req,
+    person,
+    accent,
+  }: {
+    label: string;
+    req?: RequestItem | null;
+    person?: PersonIdentity;
+    accent: string;
+  }) => (
+    <div className="min-w-0 flex-1">
+      <div
+        className={`text-[11px] font-bold uppercase tracking-widest ${accent}`}
+      >
+        {label}
+      </div>
+      {req ? (
+        <>
+          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+            <span className="text-2xl sm:text-3xl font-extrabold leading-tight truncate">
+              {req.singer}
+            </span>
+            {req.isDuo && (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-teal-500/25 text-teal-200 ring-1 ring-teal-400/50">
+                DUET{req.partner ? ` · ${req.partner}` : ""}
+              </span>
+            )}
+            {person?.multiName && (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-red-500/30 text-red-200 ring-1 ring-red-400/60">
+                ⚠ {person.aliases.length} NAMES
+              </span>
+            )}
+          </div>
+          <div className="text-base sm:text-lg text-foreground/85 truncate">
+            {req.songTitle}
+            {req.artist ? (
+              <span className="text-foreground/55"> — {req.artist}</span>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div className="text-2xl font-bold text-muted-foreground/60 mt-0.5">
+          —
+        </div>
+      )}
+    </div>
+  );
+
+  const Stat = ({
+    n,
+    label,
+    tone = "",
+  }: {
+    n: number;
+    label: string;
+    tone?: string;
+  }) => (
+    <div className="rounded-lg border bg-background/40 px-3 py-2 text-center min-w-[84px]">
+      <div className={`text-3xl font-extrabold leading-none ${tone}`}>{n}</div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mt-1">
+        {label}
+      </div>
+    </div>
+  );
+
+  return (
+    <Card className="border-primary/40 bg-gradient-to-r from-primary/15 to-accent/10">
+      <CardContent className="py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+          <div className="flex flex-col sm:flex-row gap-5 flex-1 min-w-0">
+            <Slot
+              label="Now singing"
+              req={now}
+              person={nowPerson}
+              accent="text-primary"
+            />
+            <div className="hidden sm:block w-px bg-border/60 self-stretch" />
+            <Slot
+              label="On deck"
+              req={onDeck}
+              person={onDeckPerson}
+              accent="text-amber-400"
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Stat n={singersInQueue} label="In queue" />
+            <Stat
+              n={pendingCount}
+              label="Pending"
+              tone={pendingCount > 0 ? "text-amber-400" : ""}
+            />
+            <Stat n={sungCount} label="Sung" />
+            <Stat
+              n={flaggedCount}
+              label="Flagged"
+              tone={flaggedCount > 0 ? "text-red-400" : ""}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Loud inline flag for a singer whose device has used other names tonight.
+ * Sits directly beside the name so it is caught while scanning, rather than
+ * requiring the Who/Device column to be read.
+ */
+function AliasFlag({ person }: { person?: PersonIdentity }) {
+  if (!person?.multiName) return null;
+  const others = person.aliases.map((a) => `"${a.name}" ${agoLabel(a.lastAt)}`);
+  return (
+    <span
+      className="text-[11px] font-bold px-2 py-0.5 rounded bg-red-500/30 text-red-700 dark:text-red-200 ring-1 ring-red-500/60 whitespace-nowrap"
+      title={`Same device as: ${others.join(" · ")}`}
+    >
+      ⚠ ALSO {person.aliases.length - 1} OTHER
+      {person.aliases.length - 1 === 1 ? " NAME" : " NAMES"}
+      {person.completedCount > 0 ? ` · SUNG ${person.completedCount}×` : ""}
+    </span>
   );
 }
 
