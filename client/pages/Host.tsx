@@ -24,6 +24,10 @@ import {
   buildIdentityIndex,
   agoLabel,
   describePerson,
+  acknowledgePerson,
+  acknowledgeAll,
+  getAcknowledgedSignatures,
+  isAcknowledged,
   type PersonIdentity,
 } from "@/lib/identity";
 import {
@@ -109,6 +113,8 @@ export default function HostPage() {
 
   const [authMode, setAuthMode] = useState<AuthMode>(getAuthMode());
   const [removingSinger, setRemovingSinger] = useState<string | null>(null);
+  // Bumped when the host acknowledges a duplicate, to recompute the panel.
+  const [ackTick, setAckTick] = useState(0);
 
   useEffect(() => {
     if (!authed) nav("/");
@@ -291,6 +297,14 @@ export default function HostPage() {
 
   const personForRequest = (r?: RequestItem | null) =>
     r ? identity.byRequestId.get(r.id) : undefined;
+
+  // Flagged people the host has not yet dismissed. Acknowledging is keyed to
+  // the person's current names, so a brand new alias brings them back.
+  const unackedFlagged = useMemo(() => {
+    if (!eventId) return identity.flagged;
+    const acked = getAcknowledgedSignatures(eventId);
+    return identity.flagged.filter((p) => !isAcknowledged(eventId, p, acked));
+  }, [identity, eventId, ackTick]);
 
   const singerOrder = useMemo(
     () => (eventId ? getSingerOrder(eventId) : []),
@@ -912,28 +926,41 @@ export default function HostPage() {
             singersInQueue={singerOrder.length}
             pendingCount={pending.length}
             sungCount={all.filter((r) => r.status === "complete").length}
-            flaggedCount={identity.flagged.length}
+            flaggedCount={unackedFlagged.length}
             nowPerson={personForRequest(now)}
             onDeckPerson={personForRequest(
               eventId ? getOnDeck(eventId) : undefined,
             )}
           />
 
-          {identity.flagged.length > 0 && (
+          {unackedFlagged.length > 0 && (
             <Card className="border-red-500/40 bg-red-500/5">
-              <CardHeader className="py-3">
+              <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <span>⚠️</span>
-                  Same person, different names ({identity.flagged.length})
+                  Same person, different names ({unackedFlagged.length})
                 </CardTitle>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    if (!eventId) return;
+                    acknowledgeAll(eventId, unackedFlagged);
+                    setAckTick((t) => t + 1);
+                  }}
+                >
+                  Dismiss all
+                </Button>
               </CardHeader>
               <CardContent className="pt-0">
                 <p className="text-xs text-muted-foreground mb-3">
-                  These devices have submitted under more than one name tonight
-                  — including songs already performed.
+                  These devices have submitted under more than one name tonight.
+                  Dismissing clears the alert here but keeps the flag on the
+                  queue row. If they use another new name, they return.
                 </p>
                 <ul className="space-y-2">
-                  {identity.flagged.map((p) => (
+                  {unackedFlagged.map((p) => (
                     <li
                       key={p.id}
                       className={`rounded-md p-2.5 text-sm ${p.rowClass} ring-1 ring-border`}
@@ -957,6 +984,18 @@ export default function HostPage() {
                             {p.activeCount} in queue
                           </span>
                         )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs ml-auto"
+                          onClick={() => {
+                            if (!eventId) return;
+                            acknowledgePerson(eventId, p);
+                            setAckTick((t) => t + 1);
+                          }}
+                        >
+                          ✓ Got it
+                        </Button>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                         {p.aliases.map((a) => (

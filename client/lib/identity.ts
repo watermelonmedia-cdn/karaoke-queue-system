@@ -295,6 +295,69 @@ export function agoLabel(ts: number, now = Date.now()): string {
   return rem ? `${h}h ${rem}m ago` : `${h}h ago`;
 }
 
+/* ---------------------------------------------------------------------------
+   Acknowledging a flagged person
+   ---------------------------------------------------------------------------
+   The host can dismiss a name-mismatch alert from the big panel once they have
+   seen it. The acknowledgement is keyed to that person's CURRENT set of names,
+   so if the same device later submits under yet another new name, the
+   signature changes and they resurface in the panel. Acknowledging never
+   touches the inline flag on the queue row - that stays for the whole night.
+
+   Stored per event in localStorage, since the host runs on one laptop.
+--------------------------------------------------------------------------- */
+
+const ACK_KEY_PREFIX = "karaoke_ackDupes_";
+
+/** A stable fingerprint of who this person is right now: their sorted names. */
+export function personSignature(p: PersonIdentity): string {
+  return p.aliases
+    .map((a) => normalizeName(a.name))
+    .sort()
+    .join("|");
+}
+
+export function getAcknowledgedSignatures(eventId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(ACK_KEY_PREFIX + eventId);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveAcknowledged(eventId: string, sigs: Set<string>) {
+  try {
+    localStorage.setItem(
+      ACK_KEY_PREFIX + eventId,
+      JSON.stringify(Array.from(sigs)),
+    );
+  } catch {}
+}
+
+export function acknowledgePerson(eventId: string, p: PersonIdentity) {
+  const sigs = getAcknowledgedSignatures(eventId);
+  sigs.add(personSignature(p));
+  saveAcknowledged(eventId, sigs);
+}
+
+export function acknowledgeAll(eventId: string, people: PersonIdentity[]) {
+  const sigs = getAcknowledgedSignatures(eventId);
+  for (const p of people) sigs.add(personSignature(p));
+  saveAcknowledged(eventId, sigs);
+}
+
+export function isAcknowledged(
+  eventId: string,
+  p: PersonIdentity,
+  acked?: Set<string>,
+): boolean {
+  const set = acked ?? getAcknowledgedSignatures(eventId);
+  return set.has(personSignature(p));
+}
+
 /** Human readable summary for a tooltip / alert row. */
 export function describePerson(p: PersonIdentity, now = Date.now()): string {
   const names = p.aliases
