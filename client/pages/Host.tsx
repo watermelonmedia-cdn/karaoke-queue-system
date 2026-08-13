@@ -28,7 +28,12 @@ import {
   acknowledgeAll,
   getAcknowledgedSignatures,
   isAcknowledged,
+  detectNameCollision,
+  buildSetList,
+  summariseSetList,
+  formatClock,
   type PersonIdentity,
+  type SetListEntry,
 } from "@/lib/identity";
 import {
   bootstrapEvents,
@@ -305,6 +310,12 @@ export default function HostPage() {
     const acked = getAcknowledgedSignatures(eventId);
     return identity.flagged.filter((p) => !isAcknowledged(eventId, p, acked));
   }, [identity, eventId, ackTick]);
+
+  // The night in performance order, for the set list card.
+  const setList = useMemo(
+    () => (eventId ? buildSetList(getRequestsByEvent(eventId)) : []),
+    [eventId, tick],
+  );
 
   const singerOrder = useMemo(
     () => (eventId ? getSingerOrder(eventId) : []),
@@ -1377,6 +1388,8 @@ export default function HostPage() {
             </CardContent>
           </Card>
 
+          <SetListCard entries={setList} />
+
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="text-base">
@@ -1426,6 +1439,18 @@ export default function HostPage() {
                                 </span>
                                 <DuoBadge request={r} />
                                 <AliasFlag person={person} />
+                                {eventId &&
+                                  detectNameCollision(
+                                    r,
+                                    getRequestsByEvent(eventId),
+                                  ) && (
+                                    <span
+                                      className="text-[11px] font-bold px-2 py-0.5 rounded bg-orange-500/25 text-orange-700 dark:text-orange-200 ring-1 ring-orange-500/50 whitespace-nowrap"
+                                      title="Another person with this same name is already in the queue. Approving will prompt you to tell them apart."
+                                    >
+                                      ⚠ NAME CLASH
+                                    </span>
+                                  )}
                               </div>
                             </td>
                             <td className="py-3 px-2">{r.songTitle}</td>
@@ -1447,16 +1472,45 @@ export default function HostPage() {
                                   className="h-8 text-xs"
                                   onClick={async () => {
                                     if (!eventId) return;
-                                    // Add singer to the active queue (end of list)
-                                    ensureSingerInOrder(eventId, r.singer);
+
+                                    // The queue is keyed by name, so a second
+                                    // person with the same name would stack on
+                                    // top of the first. Catch that here.
+                                    let nameToUse = r.singer;
+                                    const clash = detectNameCollision(
+                                      r,
+                                      getRequestsByEvent(eventId),
+                                    );
+                                    if (clash) {
+                                      const other = clash.otherPerson;
+                                      const detail = other
+                                        ? `already in the queue from a different device${
+                                            other.ips.length
+                                              ? ` (${other.ips[0]})`
+                                              : ""
+                                          }`
+                                        : "already in the queue from a different device";
+                                      const entered = prompt(
+                                        `Heads up: "${clash.name}" is ${detail}.\n\n` +
+                                          `Approving with the same name would stack them into one queue slot.\n\n` +
+                                          `Enter a name to tell them apart, or press Cancel to approve as-is:`,
+                                        clash.suggestion,
+                                      );
+                                      if (entered && entered.trim()) {
+                                        nameToUse = entered.trim();
+                                        await updateRequestInfo(r.id, {
+                                          singer: nameToUse,
+                                        });
+                                      }
+                                    }
+
+                                    ensureSingerInOrder(eventId, nameToUse);
                                     setSingerDisplayName(
                                       eventId,
-                                      singerKey(r.singer),
-                                      r.singer,
+                                      singerKey(nameToUse),
+                                      nameToUse,
                                     );
-                                    // Change request status to approved
                                     await transitionRequest(r.id, "approved");
-                                    // Sync the updated singer order to Supabase
                                     await persistSingerOrderToRemote(eventId);
                                     setTick((t) => t + 1);
                                   }}
@@ -1698,6 +1752,127 @@ function NightAtAGlance({
           </div>
         </div>
       </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The night so far, in the order people actually sang.
+ *
+ * Answers "who sang where" at a glance, so the host can keep rotation fair
+ * without having to remember it. Newest first, since the recent end of the
+ * night is what usually gets questioned.
+ */
+function SetListCard({ entries }: { entries: SetListEntry[] }) {
+  const [open, setOpen] = useState(true);
+  const summary = useMemo(() => summariseSetList(entries), [entries]);
+
+  if (entries.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="py-3">
+          <CardTitle className="text-base">Set list</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <p className="text-sm text-muted-foreground">
+            No songs finished yet. Completed songs appear here in order.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const newestFirst = [...entries].reverse();
+  const repeats = summary.filter((s) => s.count > 1);
+
+  return (
+    <Card>
+      <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          Set list — {entries.length} sung
+          {repeats.length > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+              {repeats.length} repeat{repeats.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </CardTitle>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 text-xs"
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? "Hide" : "Show"}
+        </Button>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0 space-y-4">
+          {summary.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {summary.map((s) => (
+                <span
+                  key={s.singer}
+                  className={`text-xs px-2 py-1 rounded-md border ${
+                    s.count > 1
+                      ? "bg-amber-500/15 border-amber-500/40 text-amber-200"
+                      : "bg-muted/40 border-border text-muted-foreground"
+                  }`}
+                  title={`Sang at position ${s.positions.join(", ")}`}
+                >
+                  {s.singer}
+                  {s.count > 1 && (
+                    <span className="font-bold"> ×{s.count}</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <ol className="space-y-1.5 max-h-80 overflow-y-auto pr-1 scrollbar-thin">
+            {newestFirst.map((e) => (
+              <li
+                key={e.request.id}
+                className="flex items-start gap-3 rounded-md border border-border/60 bg-background/30 px-3 py-2"
+              >
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
+                  {e.position}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold">{e.singer}</span>
+                    {e.nthForSinger > 1 && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-700 dark:text-amber-200">
+                        {e.nthForSinger}
+                        {e.nthForSinger === 2
+                          ? "nd"
+                          : e.nthForSinger === 3
+                            ? "rd"
+                            : "th"}{" "}
+                        SONG
+                      </span>
+                    )}
+                    {e.isDuo && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-700 dark:text-teal-200">
+                        DUET{e.partner ? ` · ${e.partner}` : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="truncate text-sm text-muted-foreground">
+                    {e.songTitle}
+                    {e.artist ? ` — ${e.artist}` : ""}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right text-xs text-muted-foreground">
+                  <div>{formatClock(e.at)}</div>
+                  {e.gapMinutes != null && (
+                    <div className="opacity-60">+{e.gapMinutes}m</div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      )}
     </Card>
   );
 }

@@ -307,6 +307,156 @@ export function agoLabel(ts: number, now = Date.now()): string {
    Stored per event in localStorage, since the host runs on one laptop.
 --------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+   Name collisions
+   ---------------------------------------------------------------------------
+   The queue is keyed by lowercased singer name, so two DIFFERENT people both
+   called "Dave" collapse into a single slot: one loses their place and their
+   songs stack under one entry.
+
+   This detects that at approve time, and deliberately distinguishes:
+     - same name, same device  -> the same Dave adding a second song. Fine.
+     - same name, other device -> two different Daves. Needs disambiguating.
+--------------------------------------------------------------------------- */
+
+export interface NameCollision {
+  name: string;
+  /** active requests already queued under that name by someone else */
+  otherPersonRequests: RequestItem[];
+  otherPerson?: PersonIdentity;
+  /** a free numbered variant, e.g. "Dave (2)" */
+  suggestion: string;
+}
+
+/**
+ * Returns null when approving `incoming` is safe. Otherwise describes the
+ * clash. `allRequests` should be every request for the event, completed
+ * included, so a returning singer is correctly linked to their earlier songs.
+ */
+export function detectNameCollision(
+  incoming: RequestItem,
+  allRequests: RequestItem[],
+): NameCollision | null {
+  const key = normalizeName(incoming.singer);
+  if (!key) return null;
+
+  const index = buildIdentityIndex(allRequests);
+  const me = index.byRequestId.get(incoming.id);
+
+  const clashing = allRequests.filter((r) => {
+    if (r.id === incoming.id) return false;
+    if (r.status === "complete") return false;
+    if (normalizeName(r.singer) !== key) return false;
+    const them = index.byRequestId.get(r.id);
+    // If either side has no identity we cannot prove they differ, so assume
+    // the same person rather than raising a false alarm.
+    if (!me || !them) return false;
+    return them.id !== me.id;
+  });
+
+  if (clashing.length === 0) return null;
+
+  const taken = new Set(allRequests.map((r) => normalizeName(r.singer)));
+  let n = 2;
+  while (taken.has(normalizeName(`${incoming.singer.trim()} (${n})`))) n++;
+
+  return {
+    name: incoming.singer.trim(),
+    otherPersonRequests: clashing,
+    otherPerson: index.byRequestId.get(clashing[0].id),
+    suggestion: `${incoming.singer.trim()} (${n})`,
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   Set list - who has sung, in order
+--------------------------------------------------------------------------- */
+
+export interface SetListEntry {
+  /** 1-based slot in the night */
+  position: number;
+  request: RequestItem;
+  singer: string;
+  songTitle: string;
+  artist: string;
+  /** when they finished, or started if no completion time was recorded */
+  at: number;
+  /** how many songs this singer has done by this point in the night */
+  nthForSinger: number;
+  /** minutes since the previous singer finished */
+  gapMinutes: number | null;
+  isDuo: boolean;
+  partner?: string;
+}
+
+/**
+ * The night in performance order, oldest first. Built from completed requests
+ * using completedAt, falling back to startedAt then createdAt so a song
+ * marked done without timing still lands in a sensible place.
+ */
+export function buildSetList(requests: RequestItem[]): SetListEntry[] {
+  const done = requests
+    .filter((r) => r.status === "complete")
+    .sort(
+      (a, b) =>
+        (a.completedAt ?? a.startedAt ?? a.createdAt) -
+        (b.completedAt ?? b.startedAt ?? b.createdAt),
+    );
+
+  const counts = new Map<string, number>();
+  let prevAt: number | null = null;
+
+  return done.map((r, i) => {
+    const key = normalizeName(r.singer);
+    const nth = (counts.get(key) ?? 0) + 1;
+    counts.set(key, nth);
+    const at = r.completedAt ?? r.startedAt ?? r.createdAt;
+    const gap = prevAt == null ? null : Math.round((at - prevAt) / 60000);
+    prevAt = at;
+    return {
+      position: i + 1,
+      request: r,
+      singer: r.singer.trim(),
+      songTitle: r.songTitle,
+      artist: r.artist,
+      at,
+      nthForSinger: nth,
+      gapMinutes: gap,
+      isDuo: !!r.isDuo,
+      partner: r.partner,
+    };
+  });
+}
+
+/** Per-singer totals for the night, most songs first. */
+export function summariseSetList(
+  entries: SetListEntry[],
+): { singer: string; count: number; lastAt: number; positions: number[] }[] {
+  const map = new Map<
+    string,
+    { singer: string; count: number; lastAt: number; positions: number[] }
+  >();
+  for (const e of entries) {
+    const key = normalizeName(e.singer);
+    const cur = map.get(key);
+    if (cur) {
+      cur.count += 1;
+      cur.lastAt = Math.max(cur.lastAt, e.at);
+      cur.positions.push(e.position);
+    } else {
+      map.set(key, {
+        singer: e.singer,
+        count: 1,
+        lastAt: e.at,
+        positions: [e.position],
+      });
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => b.count - a.count || b.lastAt - a.lastAt,
+  );
+}
+
 const ACK_KEY_PREFIX = "karaoke_ackDupes_";
 
 /** A stable fingerprint of who this person is right now: their sorted names. */

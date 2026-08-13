@@ -1,0 +1,21 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260812204840
+Username: HRJ-POWER-1\buyho
+RunAs User: HRJ-POWER-1\buyho
+Configuration Name: 
+Machine: HRJ-POWER-1 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\buyho\Documents\Claude Projects\Karaoke App Code\push-to-github.ps1 -Message Catch same-name singers at approval and add a set list of who sang when
+Process ID: 2968
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+=== 1. Environment ===
+Folder : C:\Users\buyho\Documents\Claude Projects\Karaoke App Code
