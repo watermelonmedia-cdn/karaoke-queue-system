@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isoToDateOnly, dateOnlyToISO, formatEventDate } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -23,7 +24,7 @@ export default function HostEventsPage() {
   const [form, setForm] = useState<EventItem>({
     id: "",
     name: "",
-    datetime: "",
+    datetime: dateOnlyToISO(""),
     location: "",
     isPublic: true,
     requestsOpen: true,
@@ -44,7 +45,7 @@ export default function HostEventsPage() {
     setForm({
       id: "",
       name: "",
-      datetime: "",
+      datetime: dateOnlyToISO(""),
       location: "",
       isPublic: true,
       requestsOpen: true,
@@ -138,7 +139,7 @@ export default function HostEventsPage() {
                       >
                         <div className="font-semibold">{e.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {new Date(e.datetime).toLocaleString()} • {e.location}
+                          {formatEventDate(e.datetime)} • {e.location}
                         </div>
                       </button>
                     ))}
@@ -173,7 +174,7 @@ export default function HostEventsPage() {
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {new Date(e.datetime).toLocaleString()} • {e.location}
+                          {formatEventDate(e.datetime)} • {e.location}
                         </div>
                       </button>
                     ))}
@@ -209,14 +210,12 @@ export default function HostEventsPage() {
                 />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground">
-                  Date & Time
-                </label>
+                <label className="text-sm text-muted-foreground">Date</label>
                 <Input
-                  type="datetime-local"
-                  value={toInputDT(form.datetime)}
+                  type="date"
+                  value={isoToDateOnly(form.datetime)}
                   onChange={(e) =>
-                    setForm({ ...form, datetime: fromInputDT(e.target.value) })
+                    setForm({ ...form, datetime: dateOnlyToISO(e.target.value) })
                   }
                 />
               </div>
@@ -311,18 +310,4 @@ function slugify(s: string) {
     .replace(/(^-|-$)+/g, "");
 }
 
-function toInputDT(s: string) {
-  if (!s) return "";
-  const d = new Date(s);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
-function fromInputDT(s: string) {
-  if (!s) return "";
-  const d = new Date(s);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`.replace(
-    " ",
-    "-",
-  );
-}

@@ -1,12 +1,12 @@
 ﻿**********************
 Windows PowerShell transcript start
-Start time: 20260812204840
+Start time: 20260812210925
 Username: HRJ-POWER-1\buyho
 RunAs User: HRJ-POWER-1\buyho
 Configuration Name: 
 Machine: HRJ-POWER-1 (Microsoft Windows NT 10.0.26200.0)
-Host Application: powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\buyho\Documents\Claude Projects\Karaoke App Code\push-to-github.ps1 -Message Catch same-name singers at approval and add a set list of who sang when
-Process ID: 2968
+Host Application: powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\buyho\Documents\Claude Projects\Karaoke App Code\push-to-github.ps1 -Message Remove event start times and fix the timezone shift; add set list and name-clash detection
+Process ID: 12132
 PSVersion: 5.1.26100.9168
 PSEdition: Desktop
 PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
@@ -16,6 +16,3 @@ WSManStackVersion: 3.0
 PSRemotingProtocolVersion: 2.3
 SerializationVersion: 1.1.0.1
 **********************
-
-=== 1. Environment ===
-Folder : C:\Users\buyho\Documents\Claude Projects\Karaoke App Code

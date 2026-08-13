@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { cn, formatMSTTime } from "@/lib/utils";
+import { cn, formatEventDate } from "@/lib/utils";
 import { Music, Users } from "lucide-react";
 import {
   bootstrapEvents,
@@ -249,7 +249,7 @@ export default function Index() {
                   {isClosed ? "Requests Closed" : "Requests Open"}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/30 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur">
-                  📅 {formatMSTTime(activeEvent.datetime)}
+                  📅 {formatEventDate(activeEvent.datetime)}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/30 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur">
                   📍 {activeEvent.location}

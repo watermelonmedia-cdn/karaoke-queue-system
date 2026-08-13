@@ -8,7 +8,77 @@ export function cn(...inputs: ClassValue[]) {
 // Timezone utilities for MST handling
 const MST_OFFSET_HOURS = -7; // MST is UTC-7
 
+/* ---------------------------------------------------------------------------
+   Date-only event handling
+   ---------------------------------------------------------------------------
+   Start times were removed: they were not used, and they shifted by an hour.
+
+   The cause was a mismatch. convertMSTToUTC() applied a FIXED -7 offset, while
+   formatMSTTime() rendered via America/Denver, which follows daylight saving.
+   From March to November Denver is UTC-6, so a time written with -7 read back
+   an hour out.
+
+   Storing a date at local NOON avoids the class of bug entirely: a date pinned
+   to midday cannot be pushed across a day boundary by any timezone offset,
+   whereas midnight can.
+--------------------------------------------------------------------------- */
+
+/** "YYYY-MM-DD" for a date input, in Denver time. */
+export function getCurrentMSTDate(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Denver",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return parts; // en-CA already gives YYYY-MM-DD
+}
+
+/** Turn "YYYY-MM-DD" into an ISO string at local noon, safe across timezones. */
+export function dateOnlyToISO(dateString: string): string {
+  const [y, m, d] = (dateString || getCurrentMSTDate()).split("-").map(Number);
+  // Noon UTC: far enough from either boundary that no offset changes the date.
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12, 0, 0)).toISOString();
+}
+
+/** Pull "YYYY-MM-DD" back out of a stored ISO string, for a date input. */
+export function isoToDateOnly(iso: string): string {
+  if (!iso) return getCurrentMSTDate();
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return getCurrentMSTDate();
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Denver",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** Human readable date, no time. e.g. "Wed, Jul 22, 2026" */
+export function formatEventDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Denver",
+  }).format(d);
+}
+
 /**
+ * @deprecated Buggy, and no longer used. Event start times were removed.
+ *
+ * This applied a FIXED -7 offset while formatMSTTime() rendered via
+ * America/Denver, which follows daylight saving. Between March and November
+ * Denver is UTC-6, so times written here read back an hour out. That was the
+ * "entering an event changes the time" bug.
+ *
+ * Use dateOnlyToISO() / formatEventDate() instead. Kept only so any older
+ * stored value can still be interpreted.
+ *
  * Converts a datetime-local string (assumed to be in MST) to ISO UTC string
  * datetime-local format: "YYYY-MM-DDTHH:mm" (no timezone info)
  * The input is treated as MST and converted to UTC for storage

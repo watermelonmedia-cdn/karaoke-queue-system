@@ -80,7 +80,7 @@ import {
   clearAllPublicEvents,
 } from "@/lib/karaoke";
 import type { EventItem, RequestItem } from "@/lib/karaoke";
-import { convertMSTToUTC, getCurrentMSTDateTime } from "@/lib/utils";
+import { dateOnlyToISO, getCurrentMSTDate } from "@/lib/utils";
 
 export default function HostPage() {
   const nav = useNavigate();
@@ -112,7 +112,7 @@ export default function HostPage() {
   const [shiftForm, setShiftForm] = useState({
     eventName: "",
     location: "",
-    dateTime: getCurrentMSTDateTime(),
+    dateTime: getCurrentMSTDate(),
     requestsOpen: true,
   });
 
@@ -472,8 +472,8 @@ export default function HostPage() {
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, "");
 
-      // Convert MST datetime to UTC for storage
-      const shiftDateTime = convertMSTToUTC(shiftForm.dateTime);
+      // Date only, pinned to noon so no timezone offset can shift the day.
+      const shiftDateTime = dateOnlyToISO(shiftForm.dateTime);
 
       const newEvent: EventItem = {
         id: eventId,
@@ -493,7 +493,7 @@ export default function HostPage() {
       setShiftForm({
         eventName: "",
         location: "",
-        dateTime: getCurrentMSTDateTime(),
+        dateTime: getCurrentMSTDate(),
         requestsOpen: true,
       });
 
@@ -1583,10 +1583,10 @@ export default function HostPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="date-time">Date & Time</Label>
+              <Label htmlFor="date-time">Date</Label>
               <Input
                 id="date-time"
-                type="datetime-local"
+                type="date"
                 value={shiftForm.dateTime}
                 onChange={(e) =>
                   setShiftForm({ ...shiftForm, dateTime: e.target.value })
