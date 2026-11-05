@@ -515,15 +515,33 @@ export default function Index() {
         </div>
 
         <div className="lg:col-span-2 space-y-8 min-w-0 lg:sticky lg:top-24">
+      <div id="my-songs">
       <MySongsCard
         eventId={activeEvent.id}
         allRequests={eventRequests}
         publicQueue={publicQueue}
       />
+      </div>
 
       {/* Submission Form */}
       <div id="submit-form-section">
-        <RequestSubmissionForm eventId={activeEvent.id} isClosed={isClosed} />
+        <RequestSubmissionForm
+          eventId={activeEvent.id}
+          isClosed={isClosed}
+          onSubmitted={() => {
+            // Re-read the queue so the singer sees their own song appear
+            // without having to reload. addRequestAsync has already pulled
+            // fresh data; this is what tells React to look at it.
+            setTick((t) => t + 1);
+            // Bring their list into view, since on a phone the form may have
+            // pushed it off screen.
+            requestAnimationFrame(() => {
+              document
+                .getElementById("my-songs")
+                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
+          }}
+        />
       </div>
         </div>
       </div>
@@ -534,9 +552,11 @@ export default function Index() {
 function RequestSubmissionForm({
   eventId,
   isClosed,
+  onSubmitted,
 }: {
   eventId: string;
   isClosed: boolean;
+  onSubmitted?: () => void;
 }) {
   const [form, setForm] = useState({
     // Prefilled from the last name this phone submitted, so a returning
@@ -621,6 +641,13 @@ function RequestSubmissionForm({
         partner: "",
       });
       setTos(false);
+
+      // Make sure we are reading post-insert data, then let the page
+      // re-render so their song shows up in the list and the queue.
+      try {
+        await refreshRequestsFromRemote();
+      } catch {}
+      onSubmitted?.();
 
       // Auto-hide success message after 5 seconds
       setTimeout(() => setSuccess(null), 5000);
