@@ -45,6 +45,7 @@ import {
   getRequests,
   getSingerDisplayName,
   getSingerOrder,
+  getEffectiveSingerOrder,
   setSingerOrder,
   isHostAuthed,
   getAuthMode,
@@ -76,6 +77,7 @@ import {
   upsertEvent,
   setEvents,
   deleteEvent,
+  endShift,
 } from "@/lib/karaoke";
 import type { EventItem, RequestItem } from "@/lib/karaoke";
 import { dateOnlyToISO, getCurrentMSTDate } from "@/lib/utils";
@@ -160,8 +162,18 @@ export default function HostPage() {
       });
     } else {
       const cur = events.find((e) => e.id === eventId);
-      if (cur && !cur.isPublic) {
-        const firstActive = events.find((e) => e.isPublic);
+      const firstActive = events.find((e) => e.isPublic);
+
+      if (!eventId || !cur) {
+        // No event selected, or the selected one no longer exists.
+        //
+        // This branch previously only handled `cur && !cur.isPublic`, so when
+        // eventId was null, `cur` was undefined and NOTHING ran. Ending a
+        // shift sets eventId to null, which left the dashboard permanently
+        // with no event selected: both the queue and pending lists rendered
+        // empty even though requests existed on the server.
+        if (firstActive) setEventId(firstActive.id);
+      } else if (!cur.isPublic) {
         setEventId(firstActive?.id ?? null);
       }
     }
@@ -317,8 +329,10 @@ export default function HostPage() {
     [eventId, tick],
   );
 
+  // Self-healing: includes any approved singer missing from the stored
+  // roster, so a lost sync can never hide them from the queue.
   const singerOrder = useMemo(
-    () => (eventId ? getSingerOrder(eventId) : []),
+    () => (eventId ? getEffectiveSingerOrder(eventId) : []),
     [eventId, tick],
   );
 
@@ -550,10 +564,15 @@ export default function HostPage() {
                 variant="destructive"
                 disabled={endingShift}
                 onClick={async () => {
-                  if (!confirm("End this shift?")) return;
+                  if (
+                    !confirm(
+                      "End this shift?\n\nThe event comes off the main screen and stops taking requests. Tonight's songs are kept for the set list and stats.",
+                    )
+                  )
+                    return;
                   setEndingShift(true);
                   try {
-                    const res = await deleteEvent(eventId);
+                    const res = await endShift(eventId);
                     if (!res.ok) {
                       alert(
                         `Could not end the shift.\n\n${res.reason || "Unknown error"}\n\n` +
@@ -561,7 +580,19 @@ export default function HostPage() {
                       );
                       return;
                     }
+                    // Mark it private in local component state too. The events
+                    // poll is on a 5s cycle, and until it runs the auto-select
+                    // effect would see a still-public event and reopen the one
+                    // we just ended.
+                    setEvents((prev) =>
+                      prev.map((e) =>
+                        e.id === eventId
+                          ? { ...e, isPublic: false, requestsOpen: false }
+                          : e,
+                      ),
+                    );
                     setEventId(null);
+                    setHostSelectedEvent("");
                     setTick((t) => t + 1);
                   } finally {
                     setEndingShift(false);
@@ -611,16 +642,35 @@ export default function HostPage() {
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
             <p className="text-muted-foreground mb-2">No event selected</p>
-            <p className="text-sm text-muted-foreground">
-              Select an event from the dropdown above to manage requests and
-              queue.
-            </p>
-            <div className="mt-4 text-xs text-muted-foreground bg-muted p-2 rounded">
-              <p>
-                Debug: {getRequests().length} total requests in localStorage
+            {events.some((e) => e.isPublic) ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  There is a live event with requests waiting. Open it to
+                  manage the queue.
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {events
+                    .filter((e) => e.isPublic)
+                    .map((e) => (
+                      <Button
+                        key={e.id}
+                        size="sm"
+                        onClick={() => {
+                          setEventId(e.id);
+                          setHostSelectedEvent(e.id);
+                          setTick((t) => t + 1);
+                        }}
+                      >
+                        Open “{e.name}”
+                      </Button>
+                    ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Start a shift to begin taking requests.
               </p>
-              <p>Events available: {events.length}</p>
-            </div>
+            )}
           </CardContent>
         </Card>
       ) : (

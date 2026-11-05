@@ -146,7 +146,10 @@ function applyRemoteRoster(
   // Don't overwrite singer order if we just synced it within the last 2 seconds
   // This prevents real-time subscriptions from reverting local drag-drop changes
   const timeSinceSync = getTimeSinceLastSync(eventId);
-  const SYNC_GRACE_PERIOD = 2000; // 2 seconds
+  // Was 2s, but the host polls events every 5s. Any sync slower than two
+  // seconds left a window where the poll overwrote the local roster with a
+  // stale copy, which is how approved singers vanished from the queue.
+  const SYNC_GRACE_PERIOD = 15000;
 
   if (isStringArray(orderData)) {
     if (timeSinceSync > SYNC_GRACE_PERIOD) {
@@ -345,7 +348,71 @@ export async function upsertEvent(ev: EventItem): Promise<void> {
 }
 
 /**
- * End a shift by deleting the event.
+ * End a shift: retire the event without destroying the night.
+ *
+ * It used to DELETE the event row, which was wrong twice over.
+ *
+ *  1. It usually failed. `requests.event_id` references `events.id`, so a
+ *     delete is refused while the event still has requests, which it always
+ *     does. Evidence: 906 requests across 22 events with zero orphans. The
+ *     failure was silent, so the event stayed live on the public page and the
+ *     dashboard while appearing to have been ended.
+ *
+ *  2. Even when it worked it threw away the night: set list, archive and
+ *     season stats all read from these rows.
+ *
+ * Setting is_public = false removes it from the public page immediately,
+ * cannot fail on a foreign key, keeps the history, and is reversible.
+ */
+export async function endShift(
+  eventId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  // Keep a local archive copy, but leave the requests active so the set list
+  // and stats still have tonight's songs.
+  try {
+    archiveEventRequests(eventId, false);
+  } catch {}
+
+  const supa = getSupabase();
+  if (supa) {
+    try {
+      await refreshHostSession();
+    } catch {}
+
+    const { error } = await supa
+      .from("events")
+      .update({ is_public: false, requests_open: false })
+      .eq("id", eventId);
+    if (error) {
+      console.error("[Karaoke] endShift failed:", error.message);
+      return { ok: false, reason: error.message };
+    }
+
+    // Confirm it really is off the public page.
+    const { data: still } = await supa
+      .from("events")
+      .select("id,is_public")
+      .eq("id", eventId)
+      .limit(1);
+    if (still && still[0] && still[0].is_public === true) {
+      return {
+        ok: false,
+        reason:
+          "The event is still marked public on the server. You may need to sign in again.",
+      };
+    }
+  }
+
+  setEvents(
+    getEvents().map((e) =>
+      e.id === eventId ? { ...e, isPublic: false, requestsOpen: false } : e,
+    ),
+  );
+  return { ok: true };
+}
+
+/**
+ * Permanently delete an event. Kept for the events admin screen.
  *
  * Previously this ignored the Supabase error and updated local state anyway,
  * so a denied delete looked like success: the event vanished from the host
@@ -1144,7 +1211,17 @@ function archiveRequest(r: RequestItem) {
   }
 }
 
-export function archiveEventRequests(eventId: string): void {
+/**
+ * @param removeFromActive when true, also drops the requests from the active
+ * list. That is only sensible when switching away from an event. Ending a
+ * shift passes false: the rows still exist in Supabase and the 2-second
+ * refresh would restore them anyway, but in the meantime the set list and
+ * stats would briefly empty out.
+ */
+export function archiveEventRequests(
+  eventId: string,
+  removeFromActive = true,
+): void {
   // Move all requests for this event to archive, regardless of status
   const all = getRequests();
   const eventRequests = all.filter((r) => r.eventId === eventId);
@@ -1174,9 +1251,10 @@ export function archiveEventRequests(eventId: string): void {
 
   setArchive(archive);
 
-  // Remove archived requests from active requests
-  const remaining = all.filter((r) => r.eventId !== eventId);
-  setRequests(remaining);
+  if (removeFromActive) {
+    const remaining = all.filter((r) => r.eventId !== eventId);
+    setRequests(remaining);
+  }
 }
 
 export function cleanupOldArchive(): void {
@@ -1276,7 +1354,9 @@ export async function persistSingerOrderToRemote(
     return;
   }
   try {
-    const order = getSingerOrder(eventId);
+    // Repair before writing. Persisting a roster that is missing an approved
+    // singer is what made the empty array on the server permanent.
+    const order = reconcileSingerOrder(eventId);
     const names = getSingerDisplayNameMap(eventId);
     const rank: Record<string, number> = {};
     order.forEach((k, i) => (rank[k] = i));
@@ -1313,13 +1393,23 @@ export async function persistSingerOrderToRemote(
     // CRITICAL: Also sync the singer_order and singer_display_names to the events table
     // This ensures that real-time subscriptions reload the correct order
     console.log("[Karaoke] Also syncing singer_order to events table");
-    await supa
+    const { error: rosterErr } = await supa
       .from("events")
       .update({
         singer_order: order,
         singer_display_names: names,
       })
       .eq("id", eventId);
+    if (rosterErr) {
+      // Previously unchecked. A denied write (expired host token) left the
+      // server holding a stale roster while the host saw a correct one.
+      console.error(
+        "[Karaoke] Roster sync FAILED:",
+        rosterErr.message,
+        "- the queue order may not reach other devices.",
+      );
+      throw new Error(rosterErr.message);
+    }
     console.log("[Karaoke] Singer order synced to events table successfully");
   } catch (err) {
     console.error("[Karaoke] Error in persistSingerOrderToRemote:", err);
@@ -1333,7 +1423,9 @@ export function getPublicQueue(eventId: string): RequestItem[] {
       r.status !== "complete" &&
       (r.status === "approved" || r.status === "performing"),
   );
-  const order = getSingerOrder(eventId);
+  // Effective, not stored: a singer whose roster entry was lost to a failed
+  // sync must still appear in the public lineup.
+  const order = getEffectiveSingerOrder(eventId);
   const indexOf = (key: string) => {
     const i = order.indexOf(key);
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
@@ -2022,7 +2114,8 @@ function deriveSingerOrder(eventId: string): string[] {
   return keys;
 }
 
-function setSingerOrderLocal(eventId: string, order: string[]) {
+/** Exported for tests: writes the roster WITHOUT triggering a remote sync. */
+export function setSingerOrderLocal(eventId: string, order: string[]) {
   const store = readOrderStore();
   store[eventId] = [...order];
   writeOrderStore(store);
@@ -2149,6 +2242,63 @@ export function clearSingerDisplayName(eventId: string, key: string) {
   delete map[key];
   setSingerNamesMapLocal(eventId, map);
   scheduleRosterSync(eventId);
+}
+
+/**
+ * The roster, with anyone who has an active song but is missing from it
+ * appended.
+ *
+ * The stored singer_order is synced through Supabase and can be lost: the
+ * events poll runs every 5s while applyRemoteRoster only protects a local
+ * change for 2s, so a slow or failed write lets a stale empty array overwrite
+ * it. When that happened, approved singers disappeared from the host queue
+ * entirely, because the queue rendered from this array alone.
+ *
+ * Deriving it instead means an approved song is ALWAYS visible, whatever the
+ * sync did. The deleted per-event page had this defence; the host page did not.
+ */
+export function getEffectiveSingerOrder(eventId: string): string[] {
+  const stored = getSingerOrder(eventId);
+  const active = getRequestsByEvent(eventId).filter(
+    (r) => r.status === "approved" || r.status === "performing",
+  );
+
+  // Earliest request first, so recovered singers land in a sensible place.
+  const firstSeen = new Map<string, number>();
+  for (const r of active) {
+    const k = singerKey(r.singer);
+    const t = r.createdAt ?? 0;
+    if (!firstSeen.has(k) || t < firstSeen.get(k)!) firstSeen.set(k, t);
+  }
+
+  const missing = Array.from(firstSeen.keys())
+    .filter((k) => !stored.includes(k))
+    .sort((a, b) => (firstSeen.get(a) ?? 0) - (firstSeen.get(b) ?? 0));
+
+  if (missing.length > 0) {
+    console.warn(
+      `[Karaoke] ${missing.length} approved singer(s) were missing from the roster and have been restored:`,
+      missing,
+    );
+  }
+
+  // Drop stored entries that no longer have an active song.
+  const live = stored.filter((k) => firstSeen.has(k));
+  return [...live, ...missing];
+}
+
+/**
+ * Write the repaired roster back to local storage, so the next sync persists
+ * the corrected version rather than the broken one.
+ */
+export function reconcileSingerOrder(eventId: string): string[] {
+  const effective = getEffectiveSingerOrder(eventId);
+  const stored = getSingerOrder(eventId);
+  const changed =
+    effective.length !== stored.length ||
+    effective.some((k, i) => k !== stored[i]);
+  if (changed) setSingerOrderLocal(eventId, effective);
+  return effective;
 }
 
 export function ensureSingerInOrder(
