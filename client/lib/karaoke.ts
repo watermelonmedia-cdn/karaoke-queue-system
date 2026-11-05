@@ -344,42 +344,108 @@ export async function upsertEvent(ev: EventItem): Promise<void> {
   setEvents(list);
 }
 
-export async function deleteEvent(eventId: string): Promise<void> {
+/**
+ * End a shift by deleting the event.
+ *
+ * Previously this ignored the Supabase error and updated local state anyway,
+ * so a denied delete looked like success: the event vanished from the host
+ * screen, then the 5-second event refresh pulled it straight back and it
+ * reappeared on the public page. Since the RLS lockdown, deleting an event
+ * needs an `authenticated` session, so an expired token made this fail
+ * intermittently and silently.
+ *
+ * Now: refresh the session first, check the error, verify the row is really
+ * gone, and only then touch local state.
+ */
+export async function deleteEvent(
+  eventId: string,
+): Promise<{ ok: boolean; reason?: string }> {
   const supa = getSupabase();
-  if (supa) {
-    await supa.from("events").delete().eq("id", eventId);
-  }
-  const list = getEvents().filter((e) => e.id !== eventId);
-  setEvents(list);
-}
 
-export async function clearAllPublicEvents(): Promise<void> {
-  const events = getEvents();
-  const updatedEvents = events.map((e) => ({
-    ...e,
-    isPublic: false,
-  }));
-
-  // Update in Supabase FIRST (wait for completion)
-  const supa = getSupabase();
   if (supa) {
-    for (const event of updatedEvents) {
-      try {
-        await supa
-          .from("events")
-          .update({ is_public: false })
-          .eq("id", event.id);
-      } catch (err) {
-        console.error(`Failed to update event ${event.id}:`, err);
-      }
+    // A lapsed token is the single most likely cause of a silent failure.
+    try {
+      await refreshHostSession();
+    } catch {}
+
+    const { error } = await supa.from("events").delete().eq("id", eventId);
+    if (error) {
+      console.error("[Karaoke] deleteEvent failed:", error.message);
+      return { ok: false, reason: error.message };
+    }
+
+    // Confirm it is actually gone rather than trusting a clean response.
+    const { data: still } = await supa
+      .from("events")
+      .select("id")
+      .eq("id", eventId)
+      .limit(1);
+    if (still && still.length > 0) {
+      return {
+        ok: false,
+        reason:
+          "The event is still on the server after the delete. You may need to sign in again.",
+      };
     }
   }
 
-  // Update locally AFTER Supabase is complete
-  setEvents(updatedEvents);
+  setEvents(getEvents().filter((e) => e.id !== eventId));
+  return { ok: true };
+}
 
-  // Clear localStorage to ensure no stale data
-  localStorage.removeItem(EVENTS_KEY);
+/**
+ * Hide every event from the public page.
+ *
+ * Had the same silent-failure problem as deleteEvent, plus two more: it looped
+ * one request per event even when most were already private, and it called
+ * localStorage.removeItem(EVENTS_KEY) immediately AFTER setEvents(), wiping
+ * the state it had just written.
+ */
+export async function clearAllPublicEvents(): Promise<{
+  ok: boolean;
+  cleared: number;
+  reason?: string;
+}> {
+  const events = getEvents();
+  const stillPublic = events.filter((e) => e.isPublic);
+
+  if (stillPublic.length === 0) return { ok: true, cleared: 0 };
+
+  const supa = getSupabase();
+  if (supa) {
+    try {
+      await refreshHostSession();
+    } catch {}
+
+    // One statement instead of a request per event.
+    const { error } = await supa
+      .from("events")
+      .update({ is_public: false })
+      .in(
+        "id",
+        stillPublic.map((e) => e.id),
+      );
+    if (error) {
+      console.error("[Karaoke] clearAllPublicEvents failed:", error.message);
+      return { ok: false, cleared: 0, reason: error.message };
+    }
+
+    // Verify: nothing should still be public.
+    const { data: leftover } = await supa
+      .from("events")
+      .select("id")
+      .eq("is_public", true);
+    if (leftover && leftover.length > 0) {
+      return {
+        ok: false,
+        cleared: 0,
+        reason: `${leftover.length} event(s) are still public on the server. You may need to sign in again.`,
+      };
+    }
+  }
+
+  setEvents(events.map((e) => ({ ...e, isPublic: false })));
+  return { ok: true, cleared: stillPublic.length };
 }
 
 export async function fixEventIdMismatch(

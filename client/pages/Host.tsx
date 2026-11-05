@@ -73,11 +73,9 @@ import {
   archiveEventRequests,
   cleanupOldArchive,
   checkSupabaseHealth,
-  fixEventIdMismatch,
   upsertEvent,
   setEvents,
   deleteEvent,
-  clearAllPublicEvents,
 } from "@/lib/karaoke";
 import type { EventItem, RequestItem } from "@/lib/karaoke";
 import { dateOnlyToISO, getCurrentMSTDate } from "@/lib/utils";
@@ -94,19 +92,12 @@ export default function HostPage() {
   const [dragSinger, setDragSinger] = useState<string | null>(null);
   const [syncingOrder, setSyncingOrder] = useState(false);
   const [tick, setTick] = useState(0);
-  const [supabaseHealth, setSupabaseHealth] = useState<any>(null);
   const [manual, setManual] = useState({
     singer: "",
     songTitle: "",
     artist: "",
     status: "approved" as "pending" | "approved" | "performing",
   });
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [fixingEventId, setFixingEventId] = useState(false);
-  const [fixResult, setFixResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
   const [showStartShiftModal, setShowStartShiftModal] = useState(!eventId);
   const [creatingShift, setCreatingShift] = useState(false);
   const [shiftForm, setShiftForm] = useState({
@@ -120,6 +111,7 @@ export default function HostPage() {
   const [removingSinger, setRemovingSinger] = useState<string | null>(null);
   // Bumped when the host acknowledges a duplicate, to recompute the panel.
   const [ackTick, setAckTick] = useState(0);
+  const [endingShift, setEndingShift] = useState(false);
 
   useEffect(() => {
     if (!authed) nav("/");
@@ -134,20 +126,14 @@ export default function HostPage() {
     })();
   }, []);
 
-  // Check Supabase health on mount
+  // Warn in the console if Supabase is unreachable. The on-screen
+  // diagnostics panel was removed: it was builder.io-era debugging that
+  // shouted at the host mid-event.
   useEffect(() => {
     (async () => {
       const health = await checkSupabaseHealth();
-      setSupabaseHealth(health);
-      console.log("[Host] Supabase health check:", health);
       if (!health.connected) {
-        console.warn(
-          "[Host] WARNING: Supabase is not accessible. Error:",
-          health.error,
-        );
-        if (health.diagnosticMessage) {
-          console.warn("[Host] Diagnostic:", health.diagnosticMessage);
-        }
+        console.warn("[Host] Supabase is not accessible:", health.error);
       }
     })();
   }, []);
@@ -548,14 +534,27 @@ export default function HostPage() {
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={() => {
-                  if (confirm("End this shift?")) {
-                    deleteEvent(eventId).catch(() => {});
+                disabled={endingShift}
+                onClick={async () => {
+                  if (!confirm("End this shift?")) return;
+                  setEndingShift(true);
+                  try {
+                    const res = await deleteEvent(eventId);
+                    if (!res.ok) {
+                      alert(
+                        `Could not end the shift.\n\n${res.reason || "Unknown error"}\n\n` +
+                          `The event is still live on the main page. Try signing out and back in, then end the shift again.`,
+                      );
+                      return;
+                    }
                     setEventId(null);
+                    setTick((t) => t + 1);
+                  } finally {
+                    setEndingShift(false);
                   }
                 }}
               >
-                End Shift
+                {endingShift ? "Ending…" : "End Shift"}
               </Button>
             </>
           ) : (
@@ -580,23 +579,6 @@ export default function HostPage() {
           </Button>
           <Button
             size="sm"
-            variant="outline"
-            onClick={() => {
-              if (
-                confirm(
-                  "Clear all events? This will hide them from the main page and show 'Coming Soon' instead.",
-                )
-              ) {
-                clearAllPublicEvents();
-                setEventId(null);
-                setTick((t) => t + 1);
-              }
-            }}
-          >
-            Clear Events
-          </Button>
-          <Button
-            size="sm"
             variant="destructive"
             onClick={() => {
               logoutHost();
@@ -609,177 +591,7 @@ export default function HostPage() {
         </div>
       </div>
 
-      {supabaseHealth && !supabaseHealth.connected && (
-        <Card className="border-destructive bg-destructive/5 mb-4">
-          <CardContent className="py-4">
-            <p className="font-semibold text-destructive mb-2">
-              ⚠️ Supabase Connection Issue
-            </p>
-            <p className="text-sm mb-2">{supabaseHealth.error}</p>
-            {supabaseHealth.diagnosticMessage && (
-              <p className="text-sm text-muted-foreground">
-                {supabaseHealth.diagnosticMessage}
-              </p>
-            )}
-            {supabaseHealth.rlsPolicyIssue && (
-              <details className="mt-2 text-xs">
-                <summary className="cursor-pointer font-semibold">
-                  More info about RLS policies
-                </summary>
-                <p className="mt-2 text-muted-foreground">
-                  The requests table may have Row-Level Security (RLS) policies
-                  that are blocking access. Check the Supabase dashboard →
-                  Authentication → Policies to verify the requests table has
-                  appropriate policies enabled.
-                </p>
-              </details>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-      {eventId &&
-        getRequestsByEvent(eventId).length === 0 &&
-        getRequests().length > 0 && (
-          <Card className="border-blue-600 bg-blue-50 mb-4">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between text-blue-900">
-                <span>⚠️ No Requests Found for This Event</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShowDiagnostics(!showDiagnostics)}
-                >
-                  {showDiagnostics ? "Hide" : "Show"} Details
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            {showDiagnostics && (
-              <CardContent className="text-sm space-y-3">
-                <div>
-                  <p className="font-semibold text-blue-900">Summary:</p>
-                  <p className="text-blue-800">
-                    • Total requests in system: {getRequests().length}
-                  </p>
-                  <p className="text-blue-800">
-                    • Requests for event "{eventId}":{" "}
-                    {getRequestsByEvent(eventId).length}
-                  </p>
-                </div>
-
-                {(() => {
-                  const allRequests = getRequests();
-                  const eventIdCounts: Record<string, number> = {};
-                  allRequests.forEach((r) => {
-                    const id = r.eventId || "(no eventId)";
-                    eventIdCounts[id] = (eventIdCounts[id] || 0) + 1;
-                  });
-                  return (
-                    <div>
-                      <p className="font-semibold text-blue-900">
-                        All Event IDs in your system:
-                      </p>
-                      <div className="bg-white p-3 rounded border-2 border-blue-300 font-mono text-xs space-y-1">
-                        {Object.entries(eventIdCounts).map(([id, count]) => (
-                          <div key={id} className="text-blue-900">
-                            <span className="font-semibold text-blue-700">
-                              {id}
-                            </span>
-                            : {count} request{count !== 1 ? "s" : ""}
-                            {eventId === id && (
-                              <span className="text-blue-600 font-bold">
-                                {" "}
-                                ← current
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="bg-blue-100 p-3 rounded border-2 border-blue-400 text-xs">
-                  <p className="font-semibold text-blue-900 mb-2">
-                    How to fix:
-                  </p>
-                  <p className="text-blue-900 mb-3 font-medium">
-                    The current event ID "{eventId}" doesn't match any of your
-                    existing requests. Check if requests were created with a
-                    different event ID, or if the event ID has changed.
-                  </p>
-
-                  {(() => {
-                    const allRequests = getRequests();
-                    const eventIdCounts: Record<string, number> = {};
-                    allRequests.forEach((r) => {
-                      const id = r.eventId || "(no eventId)";
-                      eventIdCounts[id] = (eventIdCounts[id] || 0) + 1;
-                    });
-
-                    // Find a matching eventId (non-empty with requests)
-                    const matchingIds = Object.keys(eventIdCounts).filter(
-                      (id) => id !== "(no eventId)" && eventIdCounts[id] > 0,
-                    );
-                    const suggestedId = matchingIds[0];
-
-                    if (suggestedId) {
-                      return (
-                        <div className="mt-3 pt-3 border-t-2 border-blue-300">
-                          <p className="text-blue-900 mb-3 font-medium">
-                            We found requests with ID "{suggestedId}" (
-                            {eventIdCounts[suggestedId]} requests). Would you
-                            like to update the event ID?
-                          </p>
-                          {fixResult && (
-                            <div
-                              className={`mb-2 p-2 rounded text-xs font-semibold ${fixResult.success ? "bg-green-200 text-green-900 border border-green-400" : "bg-red-200 text-red-900 border border-red-400"}`}
-                            >
-                              {fixResult.message}
-                            </div>
-                          )}
-                          <Button
-                            size="sm"
-                            onClick={async () => {
-                              setFixingEventId(true);
-                              setFixResult(null);
-                              try {
-                                const result = await fixEventIdMismatch(
-                                  eventId,
-                                  suggestedId,
-                                );
-                                setFixResult(result);
-                                if (result.success) {
-                                  // Trigger a re-render
-                                  setTimeout(() => {
-                                    setTick((t) => t + 1);
-                                  }, 500);
-                                }
-                              } catch (err) {
-                                setFixResult({
-                                  success: false,
-                                  message: `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
-                                });
-                              } finally {
-                                setFixingEventId(false);
-                              }
-                            }}
-                            disabled={fixingEventId}
-                          >
-                            {fixingEventId
-                              ? "Fixing..."
-                              : `Fix: Change "${eventId}" to "${suggestedId}"`}
-                          </Button>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        )}
 
       {!eventId ? (
         <Card className="border-dashed">
@@ -1388,8 +1200,6 @@ export default function HostPage() {
             </CardContent>
           </Card>
 
-          <SetListCard entries={setList} />
-
           <Card>
             <CardHeader className="py-3">
               <CardTitle className="text-base">
@@ -1545,6 +1355,9 @@ export default function HostPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Reference only - kept at the bottom, below the live queues. */}
+          <SetListCard entries={setList} />
         </>
       )}
 
