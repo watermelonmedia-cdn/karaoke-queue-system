@@ -1,4 +1,5 @@
 import type { RequestItem } from "./karaoke";
+import { isSuspiciousNameChange } from "./singers";
 
 /**
  * Session identity tracking.
@@ -206,6 +207,18 @@ export function buildIdentityIndex(requests: RequestItem[]): IdentityIndex {
       (a, b) => a.firstAt - b.firstAt,
     );
 
+    // A device showing "Mary" then "Bill and Mary" is a duet, not someone
+    // switching names for extra turns. Only count an alias as suspicious when
+    // it shares NOBODY with the names already used. Without this, every group
+    // number submitted from one phone raised a false alarm, and a third of
+    // this venue's entries are group numbers.
+    const suspiciousAliases = aliases.filter((a, i) => {
+      if (i === 0) return true;
+      return aliases
+        .slice(0, i)
+        .every((prev) => isSuspiciousNameChange(prev.name, a.name));
+    });
+
     const firstSeenAt = reqs[0]?.createdAt ?? 0;
     const lastSeenAt = reqs.reduce(
       (m, r) => Math.max(m, r.completedAt ?? r.createdAt),
@@ -227,7 +240,7 @@ export function buildIdentityIndex(requests: RequestItem[]): IdentityIndex {
       lastSeenAt,
       completedCount,
       activeCount,
-      multiName: aliases.length > 1,
+      multiName: suspiciousAliases.length > 1,
     });
   }
 

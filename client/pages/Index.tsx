@@ -6,6 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn, formatEventDate } from "@/lib/utils";
+import {
+  getMySongs,
+  rememberMyRequest,
+  countMyPending,
+  canSubmitMore,
+  MAX_PENDING_PER_DEVICE,
+  getRememberedName,
+  rememberName,
+  checkNameClash,
+} from "@/lib/mysongs";
 import { Music, Users } from "lucide-react";
 import {
   bootstrapEvents,
@@ -25,7 +35,7 @@ import {
   subscribeSettingsRealtime,
   subscribeRequestsRealtime,
 } from "@/lib/karaoke";
-import type { EventItem } from "@/lib/karaoke";
+import type { EventItem, RequestItem } from "@/lib/karaoke";
 
 export default function Index() {
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -505,6 +515,12 @@ export default function Index() {
         </div>
 
         <div className="lg:col-span-2 space-y-8 min-w-0 lg:sticky lg:top-24">
+      <MySongsCard
+        eventId={activeEvent.id}
+        allRequests={eventRequests}
+        publicQueue={publicQueue}
+      />
+
       {/* Submission Form */}
       <div id="submit-form-section">
         <RequestSubmissionForm eventId={activeEvent.id} isClosed={isClosed} />
@@ -523,12 +539,16 @@ function RequestSubmissionForm({
   isClosed: boolean;
 }) {
   const [form, setForm] = useState({
-    singer: "",
+    // Prefilled from the last name this phone submitted, so a returning
+    // singer spells it the same way. This venue's history has "izz", "izzy"
+    // and "Izzy" as three separate roster entries for one person.
+    singer: getRememberedName(),
     songTitle: "",
     artist: "",
     isDuo: false,
     partner: "",
   });
+  const [nameClash, setNameClash] = useState("");
   const [tos, setTos] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<{
@@ -558,6 +578,14 @@ function RequestSubmissionForm({
 
     setSubmitting(true);
     try {
+      // Courtesy cap on how many can sit awaiting the host's approval.
+      const allowed = canSubmitMore(eventId, getRequestsByEvent(eventId));
+      if (!allowed.ok) {
+        setError(allowed.reason);
+        setSubmitting(false);
+        return;
+      }
+
       const res = await addRequestAsync({
         eventId,
         singer: form.singer,
@@ -572,6 +600,10 @@ function RequestSubmissionForm({
         setSubmitting(false);
         return;
       }
+
+      // Remember it locally so this phone can show its own songs and status.
+      rememberMyRequest(eventId, res.id);
+      rememberName(form.singer);
 
       // Show success message with submitted data
       setSuccess({
@@ -667,9 +699,23 @@ function RequestSubmissionForm({
                 id="singer"
                 placeholder="Your name"
                 value={form.singer}
-                onChange={(e) => setForm({ ...form, singer: e.target.value })}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm({ ...form, singer: v });
+                  const clash = checkNameClash(
+                    eventId,
+                    v,
+                    getRequestsByEvent(eventId),
+                  );
+                  setNameClash(clash.taken ? clash.message : "");
+                }}
                 disabled={submitting}
               />
+              {nameClash && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm text-amber-200">
+                  {nameClash}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="song">Song Title *</Label>
@@ -805,5 +851,91 @@ function DuetPill({
     >
       🎤🎤 Duet{request.partner ? ` · ${request.partner}` : ""}
     </span>
+  );
+}
+
+/**
+ * "Songs from this phone" — what this device has requested, and where each one
+ * stands. Deliberately says "this phone" rather than "you": a phone passed
+ * round a group will show all of that group's songs, and the wording should be
+ * honest about what it actually knows.
+ */
+function MySongsCard({
+  eventId,
+  allRequests,
+  publicQueue,
+}: {
+  eventId: string;
+  allRequests: RequestItem[];
+  publicQueue: RequestItem[];
+}) {
+  const songs = useMemo(
+    () => getMySongs(eventId, allRequests, publicQueue),
+    [eventId, allRequests, publicQueue],
+  );
+  const pending = countMyPending(eventId, allRequests);
+
+  if (songs.length === 0) return null;
+
+  const live = songs.filter((s) => s.state !== "complete" && s.state !== "gone");
+  const done = songs.filter((s) => s.state === "complete");
+
+  const tone: Record<string, string> = {
+    performing: "border-accent/60 bg-accent/15",
+    queued: "border-primary/40 bg-primary/10",
+    pending: "border-amber-500/40 bg-amber-500/10",
+    complete: "border-border bg-muted/30",
+    gone: "border-destructive/40 bg-destructive/10",
+  };
+
+  return (
+    <Card className="glass rounded-2xl">
+      <CardHeader className="pb-3">
+        <CardTitle className="font-display text-xl flex items-center gap-2">
+          <Music className="w-5 h-5 text-accent" />
+          Songs from this phone
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {live.map((s) => (
+          <div
+            key={s.request.id}
+            className={`rounded-xl border p-3 ${tone[s.state]}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold truncate">
+                  {s.request.songTitle || "—"}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {s.request.singer}
+                  {s.request.artist ? ` · ${s.request.artist}` : ""}
+                </p>
+              </div>
+              {s.position != null && (
+                <span className="shrink-0 font-display text-2xl font-extrabold text-accent">
+                  #{s.position}
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-sm font-semibold">{s.headline}</p>
+            <p className="text-xs text-muted-foreground">{s.detail}</p>
+          </div>
+        ))}
+
+        {done.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Already sung tonight: {done.length}
+          </p>
+        )}
+
+        {pending > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {pending} of {MAX_PENDING_PER_DEVICE} request slots used while you
+            wait for the host.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
