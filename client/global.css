@@ -294,9 +294,9 @@
   .logo-glow::before {
     content: "";
     position: absolute;
-    inset: -18%;
+    inset: -30%;
     border-radius: 9999px;
-    background: radial-gradient(closest-side, hsl(var(--accent) / 0.28), hsl(var(--primary) / 0.12) 55%, transparent 75%);
+    background: radial-gradient(closest-side, hsl(var(--accent) / 0.5), hsl(var(--primary) / 0.26) 50%, transparent 78%);
     z-index: 0;
   }
   .logo-glow > * { position: relative; z-index: 1; }

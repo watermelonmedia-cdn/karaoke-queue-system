@@ -1014,9 +1014,11 @@ export default function HostPage() {
                               className={`border-b transition ${
                                 syncingOrder ? "opacity-50 cursor-not-allowed" : ""
                               } ${
-                                isUpNext
-                                  ? "bg-accent/20 hover:bg-accent/30"
-                                  : "hover:bg-muted/50"
+                                current?.status === "performing"
+                                  ? "bg-accent/15 hover:bg-accent/20"
+                                  : isUpNext
+                                    ? "bg-primary/10 hover:bg-primary/15"
+                                    : "hover:bg-muted/50"
                               }`}
                             >
                               <td className="py-3 px-2 font-semibold text-center">
@@ -1029,7 +1031,7 @@ export default function HostPage() {
                                     {name}
                                   </span>
                                   {isUpNext && (
-                                    <Chip tone="gold">Next</Chip>
+                                    <Chip tone="brand">Next</Chip>
                                   )}
                                   <DuoBadge request={current} />
                                   <TurnsBadge

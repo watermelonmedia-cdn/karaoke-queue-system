@@ -410,7 +410,7 @@ export default function Index() {
 
         </div>
 
-        <div className="lg:col-span-2 space-y-8 min-w-0 lg:sticky lg:top-24">
+        <div className="order-first lg:order-none lg:col-span-2 space-y-8 min-w-0 lg:sticky lg:top-24">
       <div id="my-songs">
       <MySongsCard
         eventId={activeEvent.id}
@@ -790,14 +790,14 @@ function QueueRow({
       className={cn(
         "flex items-center gap-3 rounded-xl border p-2.5",
         isNext
-          ? "border-accent/50 bg-accent/10"
+          ? "border-primary/50 bg-primary/10"
           : "border-border/60 bg-background/30",
       )}
     >
       <span
         className={cn(
           "w-6 shrink-0 text-center font-display text-sm font-extrabold",
-          isNext ? "text-accent" : "text-muted-foreground",
+          isNext ? "text-primary" : "text-muted-foreground",
         )}
       >
         {position}
@@ -806,7 +806,7 @@ function QueueRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="font-semibold leading-tight">{request.singer}</p>
-          {isNext && <Chip tone="gold">Next</Chip>}
+          {isNext && <Chip tone="brand">Next</Chip>}
           <DuetPill request={request} />
         </div>
         <p className="text-xs text-muted-foreground truncate">
@@ -847,7 +847,7 @@ function MySongsCard({
   const tone: Record<string, string> = {
     performing: "border-accent/60 bg-accent/15",
     queued: "border-primary/40 bg-primary/10",
-    pending: "border-accent/40 bg-accent/10",
+    pending: "border-border bg-muted/40",
     complete: "border-border bg-muted/30",
     gone: "border-destructive/40 bg-destructive/10",
   };
