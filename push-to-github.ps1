@@ -25,12 +25,18 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Step 2 "Clearing cached GitHub credentials"
-# cmd /c swallows stderr entirely so a missing credential cannot abort the run.
-foreach ($t in @("git:https://github.com", "git:https://github.com/")) {
-    cmd /c "cmdkey /delete:$t >nul 2>&1"
-}
-Write-Host "Cached github.com credentials cleared (if any existed)."
+Step 2 "Authentication setup"
+# This used to delete the stored GitHub credential on EVERY run, left over from
+# fixing a wrong-account problem. The effect was that every push re-authenticated
+# and hijacked the default browser, which may be signed in as the wrong user.
+# Credentials are now left alone unless the push actually fails on auth.
+
+# Device-code flow for THIS repo only: if authentication is ever needed, git
+# prints a short code and a URL instead of launching a browser. You then open
+# it in whichever browser and profile is signed in as watermelonmedia-cdn.
+cmd /c "git config --local credential.gitHubAuthModes device >nul 2>&1"
+Write-Host "Using device-code sign-in, so no browser is opened automatically."
+Write-Host "Existing saved credentials left in place."
 
 Step 3 "Checking remote"
 $expected = "https://github.com/watermelonmedia-cdn/karaoke-queue-system.git"
@@ -92,14 +98,41 @@ Step 6 "Commits present"
 git log --oneline
 
 Step 7 "Pushing"
-Write-Host "A sign-in window may open. Use the watermelonmedia-cdn account." -ForegroundColor Yellow
 git branch -M main
-git push -u origin main
+git push -u origin main 2>&1 | Tee-Object -Variable pushOutput | Out-Host
 $pushCode = $LASTEXITCODE
+
+# Only touch saved credentials when authentication is genuinely the problem.
+# Clearing them pre-emptively is what forced a browser sign-in every time.
+if ($pushCode -ne 0) {
+    $text = ($pushOutput | Out-String)
+    $looksLikeAuth =
+        $text -match "Authentication failed" -or
+        $text -match "could not read Username" -or
+        $text -match "403" -or
+        $text -match "denied to" -or
+        $text -match "Permission to .* denied"
+
+    if ($looksLikeAuth) {
+        Write-Host "`nThat looks like an authentication problem." -ForegroundColor Yellow
+        Write-Host "Clearing the saved GitHub credential and retrying ONCE."
+        foreach ($t in @("git:https://github.com", "git:https://github.com/")) {
+            cmd /c "cmdkey /delete:$t >nul 2>&1"
+        }
+        Write-Host "`nGit will print a short code and a github.com/login/device URL."
+        Write-Host "Open that URL in the browser profile signed in as watermelonmedia-cdn." -ForegroundColor Cyan
+        git push -u origin main
+        $pushCode = $LASTEXITCODE
+    }
+}
 
 Step 8 "Result"
 if ($pushCode -eq 0) {
     Write-Host "PUSH SUCCEEDED" -ForegroundColor Green
+    # Surface the account actually used, so a wrong-account push is obvious.
+    $who = cmd /c "cmdkey /list:git:https://github.com 2>nul"
+    $user = ($who | Select-String -Pattern "User:\s*(.+)$").Matches.Groups[1].Value
+    if ($user) { Write-Host "Authenticated as: $($user.Trim())" -ForegroundColor Cyan }
     Write-Host "https://github.com/watermelonmedia-cdn/karaoke-queue-system"
     Write-Host "Vercel will start a deploy if the repo is connected."
 } else {
