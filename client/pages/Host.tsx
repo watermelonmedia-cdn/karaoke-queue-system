@@ -594,6 +594,11 @@ export default function HostPage() {
                     setEventId(null);
                     setHostSelectedEvent("");
                     setTick((t) => t + 1);
+                    alert(
+                      `Shift ended.\n\n${res.archived ?? 0} song${res.archived === 1 ? "" : "s"} archived. ` +
+                        `The event is off the main screen and its requests are no longer loaded, ` +
+                        `so the app stays fast for your next show.`,
+                    );
                   } finally {
                     setEndingShift(false);
                   }

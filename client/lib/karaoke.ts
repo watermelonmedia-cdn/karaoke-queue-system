@@ -366,10 +366,18 @@ export async function upsertEvent(ev: EventItem): Promise<void> {
  */
 export async function endShift(
   eventId: string,
-): Promise<{ ok: boolean; reason?: string }> {
-  // Keep a local archive copy, but leave the requests active so the set list
-  // and stats still have tonight's songs.
+): Promise<{ ok: boolean; reason?: string; archived?: number }> {
+  // Pull the final state of the night BEFORE archiving, so the archive holds
+  // the complete set list rather than whatever happened to be cached. Once
+  // the event goes private it drops out of the fetch scope and stops loading
+  // altogether, so this is the last chance to capture it.
   try {
+    await refreshRequestsFromRemote();
+  } catch {}
+
+  let archived = 0;
+  try {
+    archived = getRequestsByEvent(eventId).length;
     archiveEventRequests(eventId, false);
   } catch {}
 
@@ -408,7 +416,17 @@ export async function endShift(
       e.id === eventId ? { ...e, isPublic: false, requestsOpen: false } : e,
     ),
   );
-  return { ok: true };
+
+  // Drop the night from the working set. The rows stay in Supabase and in the
+  // local archive; they simply stop being loaded until a new shift starts.
+  try {
+    setRequests(getRequests().filter((r) => r.eventId !== eventId));
+  } catch {}
+
+  console.log(
+    `[Karaoke] Shift ended: ${archived} request(s) archived and unloaded for ${eventId}.`,
+  );
+  return { ok: true, archived };
 }
 
 /**
@@ -644,19 +662,75 @@ export async function checkSupabaseHealth(): Promise<{
   }
 }
 
+/**
+ * Events whose requests the app actually needs right now: anything public,
+ * plus whatever the host currently has selected.
+ *
+ * Ending a shift sets is_public = false, so the finished night drops out of
+ * this list on the next refresh and stops being loaded at all.
+ */
+export function activeEventIds(): string[] {
+  const ids = new Set<string>();
+  try {
+    for (const e of getEvents()) if (e.isPublic) ids.add(e.id);
+    const sel = getHostSelectedEvent();
+    if (sel) ids.add(sel);
+  } catch {}
+  return Array.from(ids);
+}
+
+/** When the in-flight refresh started. Used to break a stuck one. */
+let refreshStartedAt = 0;
+
+/** A refresh is abandoned after this long and a new one is allowed. */
+const REFRESH_DEADLINE_MS = 12000;
+
+/** Last time a refresh actually succeeded. Staleness is judged from this. */
+let lastSuccessfulRefreshAt = 0;
+
+export function msSinceLastSuccessfulRefresh(): number {
+  return lastSuccessfulRefreshAt === 0
+    ? Number.MAX_SAFE_INTEGER
+    : Date.now() - lastSuccessfulRefreshAt;
+}
+
+/** @param at override the timestamp; tests use it to simulate stale data. */
+export function markRefreshSucceeded(at: number = Date.now()) {
+  lastSuccessfulRefreshAt = at;
+}
+
 export async function refreshRequestsFromRemote(): Promise<void> {
-  // If refresh is already in progress, return the existing promise
+  // This dedupe used to be able to deadlock the whole app.
+  //
+  // performRefresh() had no timeout, so one hung fetch - likely on venue wifi
+  // with a 250KB payload every 2 seconds - meant the promise never settled,
+  // .finally() never ran, and EVERY later call returned that same dead
+  // promise. Requests stopped appearing, host entries stopped appearing, and
+  // because the roster is sanitised against the frozen request list, moving a
+  // singer deleted them. Only a page reload recovered it.
+  //
+  // Now a refresh that overruns the deadline is abandoned so a fresh one can
+  // start.
   if (refreshPromise) {
-    return refreshPromise;
+    const stuckFor = Date.now() - refreshStartedAt;
+    if (stuckFor < REFRESH_DEADLINE_MS) {
+      return refreshPromise;
+    }
+    console.warn(
+      `[Karaoke] Previous refresh has been stuck for ${stuckFor}ms - abandoning it and starting a new one.`,
+    );
+    refreshPromise = null;
   }
 
-  // Create and store the refresh promise immediately to prevent race conditions
-  refreshPromise = performRefresh().finally(() => {
-    // Clear the promise after it completes
-    refreshPromise = null;
+  refreshStartedAt = Date.now();
+  const mine = performRefresh().finally(() => {
+    // Only clear if this is still the current attempt; an abandoned one
+    // settling later must not wipe a newer refresh's promise.
+    if (refreshPromise === mine) refreshPromise = null;
   });
+  refreshPromise = mine;
 
-  return refreshPromise;
+  return mine;
 }
 
 async function performRefresh(): Promise<void> {
@@ -685,9 +759,61 @@ async function performRefresh(): Promise<void> {
     // common case, so they must take the single-request path.
     const cols = hasHostSession() ? HOST_COLS : PUBLIC_COLS;
 
+    // Hard timeout. Without one, a stalled connection hung forever and froze
+    // the whole app. Abandoning a slow poll is harmless: another runs in 2s.
+    const withTimeout = async (p: any, ms = 10000) => {
+      let timer: any;
+      try {
+        return await Promise.race([
+          p,
+          new Promise((_, rej) => {
+            timer = setTimeout(
+              () => rej(new Error(`Supabase request timed out after ${ms}ms`)),
+              ms,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    // ---------------------------------------------------------------------
+    // LOAD ONLY THE CURRENT SESSION
+    //
+    // The app never displays a finished night, so loading one is pure cost.
+    // This query used to be unbounded and unordered, and PostgREST caps
+    // results at 1000 rows with NO error. Measured on 2026-11-16: 1026 rows
+    // on the server, 1000 returned, and the three newest missing. That is
+    // what broke the Nov 12 event - live requests invisible, host entries
+    // invisible, and dragging a singer deleted them because the roster is
+    // sanitised against requests the app could no longer see.
+    //
+    // Scoping to the active event makes the result set constant: roughly one
+    // night's requests, no matter how large the table grows. Ending a shift
+    // makes the event private, which drops it out of this scope on the next
+    // refresh - the night is archived and simply stops being loaded.
+    //
+    // Belt and braces kept on top: newest-first ordering, so any future cap
+    // would drop OLD rows rather than new ones, and an explicit high limit.
+    // ---------------------------------------------------------------------
+    const scopeIds = activeEventIds();
+
+    const query = (c: string) => {
+      let q = supa.from("requests").select(c);
+      if (scopeIds.length > 0) {
+        q = q.in("event_id", scopeIds);
+      } else {
+        // Cold start: events have not loaded yet, so fall back to a short
+        // window rather than fetching the entire table.
+        q = q.gte("created_at", Date.now() - 2 * 86400000);
+      }
+      return q.order("created_at", { ascending: false }).limit(5000);
+    };
+
     // Typed as any: the two select() calls infer different row shapes, and
     // reassigning would otherwise widen this into a union that loses `id`.
-    let fresh: any = await supa.from("requests").select(cols);
+    let fresh: any = await withTimeout(query(cols));
 
     // Safety net only. Reached if the cached flag is stale, e.g. the host's
     // session expired between refreshes. Not part of the normal path.
@@ -695,7 +821,7 @@ async function performRefresh(): Promise<void> {
       console.info(
         "[Karaoke] Host columns denied; falling back to public columns.",
       );
-      fresh = await supa.from("requests").select(PUBLIC_COLS);
+      fresh = await withTimeout(query(PUBLIC_COLS));
     }
 
     if (fresh.error) {
@@ -788,7 +914,17 @@ async function performRefresh(): Promise<void> {
     console.log(
       `[Karaoke] Successfully mapped ${mapped.length} requests to local format`,
     );
+    // Tripwire. A silent row cap is what broke the Nov 12 event, so make any
+    // future truncation loud instead of invisible.
+    if (mapped.length >= 4900) {
+      console.error(
+        `[Karaoke] Request fetch returned ${mapped.length} rows - close to the query limit. ` +
+          `Newer requests risk being silently dropped. Shorten WINDOW_DAYS in performRefresh.`,
+      );
+    }
+
     setRequests(mapped);
+    markRefreshSucceeded();
     for (const r of mapped) {
       if (r.status === "complete" && r.completedAt) {
         archiveRequest(r);
@@ -2146,7 +2282,25 @@ export function getSingerOrder(eventId: string): string[] {
     const activeSingerKeys = new Set(
       activeRequests.map((r) => singerKey(r.singer)),
     );
-    const sanitized = stored.filter((key) => activeSingerKeys.has(key));
+    // NEVER prune the roster from stale data.
+    //
+    // This is what turned a frozen refresh into destroyed data: with the
+    // request list stuck, singers approved after the freeze looked inactive,
+    // so touching the order (dragging someone) stripped them out - and
+    // setSingerOrder then persisted that loss to the server.
+    //
+    // Additions below are always safe; only removals are gated.
+    const dataIsFresh = msSinceLastSuccessfulRefresh() < 30000;
+
+    const sanitized = dataIsFresh
+      ? stored.filter((key) => activeSingerKeys.has(key))
+      : stored;
+
+    if (!dataIsFresh && activeSingerKeys.size === 0) {
+      console.warn(
+        "[Karaoke] Request data is stale - keeping the roster intact rather than pruning it.",
+      );
+    }
 
     // If the sanitized order differs from stored, it means some singers were completed
     if (sanitized.length !== stored.length) {
@@ -2282,8 +2436,11 @@ export function getEffectiveSingerOrder(eventId: string): string[] {
     );
   }
 
-  // Drop stored entries that no longer have an active song.
-  const live = stored.filter((k) => firstSeen.has(k));
+  // Same rule as getSingerOrder: only drop people when the data is trustworthy.
+  const live =
+    msSinceLastSuccessfulRefresh() < 30000
+      ? stored.filter((k) => firstSeen.has(k))
+      : stored;
   return [...live, ...missing];
 }
 

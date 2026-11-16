@@ -63,8 +63,9 @@ describe("roster survives a lost sync", () => {
     expect(k.getEffectiveSingerOrder(EV)).toEqual(["ann", "bob", "cara"]);
   });
 
-  it("drops singers who no longer have an active song", async () => {
+  it("drops singers who no longer have an active song (when data is fresh)", async () => {
     const k = await lib();
+    k.markRefreshSucceeded();
     k.setRequests([
       req({ id: "1", singer: "Ann", status: "complete" }),
       req({ id: "2", singer: "Bob", status: "approved" }),
@@ -93,5 +94,43 @@ describe("roster survives a lost sync", () => {
     k.setSingerOrder(EV, []);
     k.reconcileSingerOrder(EV);
     expect(k.getSingerOrder(EV)).toEqual(["zed"]);
+  });
+});
+
+describe("the Nov 12 failure: stale data must not destroy the roster", () => {
+  it("keeps singers in the order when request data is stale", async () => {
+    const k = await lib();
+    // The exact shape of the live failure: the roster holds singers, but the
+    // app can no longer see their requests (they fell past the 1000-row cap).
+    k.setRequests([]);
+    k.setSingerOrderLocal(EV, ["ann", "bob", "cara"]);
+
+    // Last good data was a minute ago: too old to trust for deletions.
+    k.markRefreshSucceeded(Date.now() - 60000);
+    expect(k.msSinceLastSuccessfulRefresh()).toBeGreaterThan(30000);
+
+    // Previously this pruned all three and persisted the loss. It must not.
+    expect(k.getSingerOrder(EV)).toEqual(["ann", "bob", "cara"]);
+    expect(k.getEffectiveSingerOrder(EV)).toEqual(["ann", "bob", "cara"]);
+  });
+
+  it("still prunes correctly once a refresh has succeeded", async () => {
+    const k = await lib();
+    k.setRequests([
+      req({ id: "1", singer: "Bob", status: "approved" }),
+    ]);
+    k.setSingerOrderLocal(EV, ["ann", "bob"]);
+    k.markRefreshSucceeded();
+    expect(k.getEffectiveSingerOrder(EV)).toEqual(["bob"]);
+  });
+
+  it("moving a singer while stale does not delete them", async () => {
+    const k = await lib();
+    k.setRequests([]); // app cannot see any requests
+    k.setSingerOrderLocal(EV, ["ann", "bob", "cara"]);
+    k.markRefreshSucceeded(Date.now() - 60000);
+    k.moveSingerToIndex(EV, "cara", 0);
+    expect(k.getSingerOrder(EV)).toContain("cara");
+    expect(k.getSingerOrder(EV)).toHaveLength(3);
   });
 });
