@@ -241,6 +241,28 @@ Anonymous insert and read policies are recreated in section 0 of
 - Push with `PUSH.bat`. It clears stale `.git/*.lock` files first; a leftover
   lock silently blocks `git add` and produces an empty-looking push.
 
+## Visual design rules
+
+Palette comes from the logo: deep navy background, teal `primary`, marquee
+yellow `accent`. Tokens live in the `.dark` block of `client/global.css`.
+
+- **Four colours carry meaning, and only four.** `primary` (teal) for brand,
+  actions and duets; `accent` (yellow) for on stage / next / worth a glance;
+  red (`destructive`) for problems; emerald for good news. Do not introduce
+  another hue for a badge or state. The one exception is the person-colour
+  palette in `client/lib/identity.ts`, which is categorical on purpose.
+- **Badges are `<Chip tone>`** from `client/components/kit.tsx`. Do not hand-roll
+  a pill. In a queue row the order is fixed: Next, Duet, turns, other-names
+  flag, name clash.
+- **Icons are lucide, never emoji.** Emoji render differently on every phone.
+- **No native `confirm()`, `prompt()` or `alert()`.** Use `confirmDialog` /
+  `promptDialog` from `client/components/dialogs.tsx` and `toast` from sonner.
+- **One loud button per screen.** On the singer page that is the request
+  button; the host entrance is a quiet icon in the header.
+- `Equalizer` marks a live performance, `InitialAvatar` marks a singer.
+- The logo in `public/assets/logo.png` is a 480px, ~50 KB version. The
+  full-size original is in `branding/` and must not go back into `public/`.
+
 ## Mobile
 
 Singers are on phones, often old ones. Below 640px, `backdrop-filter` is

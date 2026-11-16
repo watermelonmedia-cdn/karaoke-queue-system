@@ -1,6 +1,19 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronUp, Trash2, Plus, Music } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Music,
+  Plus,
+  Star,
+  Trash2,
+  Users,
+} from "lucide-react";
+import { toast } from "sonner";
+import { confirmDialog, promptDialog } from "@/components/dialogs";
+import { Chip, Equalizer, InitialAvatar } from "@/components/kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -455,7 +468,7 @@ export default function HostPage() {
     // Sync to backend
     persistSingerOrderToRemote(eventId)
       .then(() => {
-        console.log("[Host] ✓ Singer order synced to remote successfully");
+        console.log("[Host] Singer order synced to remote successfully");
         setSyncingOrder(false);
         setTick((t) => t + 1);
       })
@@ -564,20 +577,22 @@ export default function HostPage() {
                 variant="destructive"
                 disabled={endingShift}
                 onClick={async () => {
-                  if (
-                    !confirm(
-                      "End this shift?\n\nThe event comes off the main screen and stops taking requests. Tonight's songs are kept for the set list and stats.",
-                    )
-                  )
-                    return;
+                  const go = await confirmDialog({
+                    title: "End this shift?",
+                    description:
+                      "The event comes off the main screen and stops taking requests. Tonight's songs are archived.",
+                    confirmLabel: "End shift",
+                    danger: true,
+                  });
+                  if (!go) return;
                   setEndingShift(true);
                   try {
                     const res = await endShift(eventId);
                     if (!res.ok) {
-                      alert(
-                        `Could not end the shift.\n\n${res.reason || "Unknown error"}\n\n` +
-                          `The event is still live on the main page. Try signing out and back in, then end the shift again.`,
-                      );
+                      toast.error("Could not end the shift", {
+                        description: `${res.reason || "Unknown error"}. The event is still live. Sign out and back in, then try again.`,
+                        duration: 12000,
+                      });
                       return;
                     }
                     // Mark it private in local component state too. The events
@@ -594,11 +609,9 @@ export default function HostPage() {
                     setEventId(null);
                     setHostSelectedEvent("");
                     setTick((t) => t + 1);
-                    alert(
-                      `Shift ended.\n\n${res.archived ?? 0} song${res.archived === 1 ? "" : "s"} archived. ` +
-                        `The event is off the main screen and its requests are no longer loaded, ` +
-                        `so the app stays fast for your next show.`,
-                    );
+                    toast.success("Shift ended", {
+                      description: `${res.archived ?? 0} song${res.archived === 1 ? "" : "s"} archived. The event is off the main screen.`,
+                    });
                   } finally {
                     setEndingShift(false);
                   }
@@ -799,8 +812,8 @@ export default function HostPage() {
             </CardContent>
           </Card>
           {authMode === "legacy" && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm">
-              <span className="font-semibold text-amber-300">
+            <div className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-2.5 text-sm">
+              <span className="font-semibold text-accent">
                 Legacy login in use.
               </span>{" "}
               <span className="text-muted-foreground">
@@ -829,7 +842,7 @@ export default function HostPage() {
             <Card className="border-red-500/40 bg-red-500/5">
               <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <span>⚠️</span>
+                  <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />
                   Same person, different names ({unackedFlagged.length})
                 </CardTitle>
                 <Button
@@ -886,7 +899,8 @@ export default function HostPage() {
                             setAckTick((t) => t + 1);
                           }}
                         >
-                          ✓ Got it
+                          <Check className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                          Got it
                         </Button>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
@@ -920,7 +934,7 @@ export default function HostPage() {
                     singerOrder.length >= 10
                       ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
                       : singerOrder.length >= 5
-                        ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                        ? "bg-accent/20 text-accent"
                         : "bg-destructive/20 text-destructive"
                   }`}
                 >
@@ -931,11 +945,11 @@ export default function HostPage() {
             <CardContent className="pt-0 space-y-4">
               {/* Queue alert for low capacity */}
               {singerOrder.length < 5 && (
-                <div className="bg-destructive/10 border border-destructive/30 p-3 rounded-lg text-sm">
-                  <p className="text-destructive font-semibold">
-                    ⚠️ Queue Running Low
+                <div className="bg-accent/10 border border-accent/30 p-3 rounded-lg text-sm">
+                  <p className="text-accent font-semibold">
+                    Queue running low
                   </p>
-                  <p className="text-destructive/80 text-xs mt-1">
+                  <p className="text-muted-foreground text-xs mt-1">
                     Only {singerOrder.length} singers queued. Approve pending
                     requests to keep the party going!
                   </p>
@@ -1001,7 +1015,7 @@ export default function HostPage() {
                                 syncingOrder ? "opacity-50 cursor-not-allowed" : ""
                               } ${
                                 isUpNext
-                                  ? "bg-amber-500/20 hover:bg-amber-500/30"
+                                  ? "bg-accent/20 hover:bg-accent/30"
                                   : "hover:bg-muted/50"
                               }`}
                             >
@@ -1010,20 +1024,19 @@ export default function HostPage() {
                               </td>
                               <td className="py-3 px-2">
                                 <div className="flex items-center gap-2 flex-wrap">
+                                  <InitialAvatar name={name} size="sm" />
                                   <span className="font-semibold text-base">
                                     {name}
                                   </span>
                                   {isUpNext && (
-                                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/30 text-amber-600 dark:text-amber-400">
-                                      NEXT
-                                    </span>
+                                    <Chip tone="gold">Next</Chip>
                                   )}
                                   <DuoBadge request={current} />
-                                  <AliasFlag person={person} />
                                   <TurnsBadge
                                     request={current}
                                     stats={pStats}
                                   />
+                                  <AliasFlag person={person} />
                                 </div>
                               </td>
                               <td className="py-3 px-2">
@@ -1040,17 +1053,23 @@ export default function HostPage() {
                                 />
                               </td>
                               <td className="py-3 px-2">
-                                <span
-                                  className={`text-xs px-2 py-1 rounded capitalize whitespace-nowrap ${
+                                <Chip
+                                  tone={
                                     current?.status === "performing"
-                                      ? "bg-primary/20 text-primary"
+                                      ? "gold"
                                       : current?.status === "approved"
-                                        ? "bg-accent/20 text-accent"
-                                        : "bg-muted text-muted-foreground"
-                                  }`}
+                                        ? "brand"
+                                        : "neutral"
+                                  }
+                                  className="capitalize"
                                 >
-                                  {current?.status || "—"}
-                                </span>
+                                  {current?.status === "performing" && (
+                                    <Equalizer className="!h-2.5" />
+                                  )}
+                                  {current?.status === "approved"
+                                    ? "queued"
+                                    : current?.status || "—"}
+                                </Chip>
                               </td>
                               <td className="py-3 px-2">
                                 <div className="flex items-center gap-1 flex-wrap">
@@ -1094,23 +1113,27 @@ export default function HostPage() {
                                     className="h-8 text-xs"
                                     onClick={async () => {
                                       if (!eventId) return;
-                                      const nm = (
-                                        prompt("Singer", name) ?? name
-                                      ).trim();
-                                      const st = (
-                                        prompt(
-                                          "Song Title",
-                                          current?.songTitle || "",
-                                        ) ??
-                                        (current?.songTitle || "")
-                                      ).trim();
-                                      const ar = (
-                                        prompt(
-                                          "Artist",
-                                          current?.artist || "",
-                                        ) ??
-                                        (current?.artist || "")
-                                      ).trim();
+                                      const nmIn = await promptDialog({
+                                        title: "Singer name",
+                                        defaultValue: name,
+                                        confirmLabel: "Next",
+                                      });
+                                      if (nmIn === null) return;
+                                      const stIn = await promptDialog({
+                                        title: "Song title",
+                                        defaultValue: current?.songTitle || "",
+                                        confirmLabel: "Next",
+                                      });
+                                      if (stIn === null) return;
+                                      const arIn = await promptDialog({
+                                        title: "Artist",
+                                        defaultValue: current?.artist || "",
+                                        confirmLabel: "Save",
+                                      });
+                                      if (arIn === null) return;
+                                      const nm = (nmIn || name).trim();
+                                      const st = stIn.trim();
+                                      const ar = arIn.trim();
                                       setSingerDisplayName(
                                         eventId,
                                         singerKey(nm),
@@ -1183,7 +1206,7 @@ export default function HostPage() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-9 w-9 text-amber-500 hover:bg-amber-500/15"
+                                    className="h-9 w-9 text-accent hover:bg-accent/15"
                                     title={`Remove this song (${current?.songTitle || "song"}) but keep ${name} in the queue`}
                                     disabled={
                                       removingSinger === key || !current?.id
@@ -1201,7 +1224,12 @@ export default function HostPage() {
                                         others > 0
                                           ? `Remove "${current.songTitle}"? ${name} stays in the queue with ${others} more song${others === 1 ? "" : "s"}.`
                                           : `Remove "${current.songTitle}"? It is ${name}'s only song, so they will leave the queue too.`;
-                                      if (!confirm(msg)) return;
+                                      const sure = await confirmDialog({
+                                        title: msg,
+                                        confirmLabel: "Remove",
+                                        danger: true,
+                                      });
+                                      if (!sure) return;
                                       setRemovingSinger(key);
                                       try {
                                         const res = await removeSongFromQueue(
@@ -1209,8 +1237,9 @@ export default function HostPage() {
                                           current.id,
                                         );
                                         if (!res.ok) {
-                                          alert(
-                                            `Could not remove that song: ${res.reason || "unknown error"}`,
+                                          toast.error(
+                                            "Could not remove that song",
+                                            { description: res.reason },
                                           );
                                         }
                                       } finally {
@@ -1240,7 +1269,12 @@ export default function HostPage() {
                                         songCount > 1
                                           ? `Remove ${name} and all ${songCount} of their queued songs?`
                                           : `Remove ${name} from the queue?`;
-                                      if (!confirm(msg)) return;
+                                      const sure = await confirmDialog({
+                                        title: msg,
+                                        confirmLabel: "Remove",
+                                        danger: true,
+                                      });
+                                      if (!sure) return;
                                       setRemovingSinger(key);
                                       try {
                                         const res =
@@ -1249,8 +1283,9 @@ export default function HostPage() {
                                             key,
                                           );
                                         if (!res.ok) {
-                                          alert(
-                                            `Could not remove ${name}: ${res.reason || "unknown error"}`,
+                                          toast.error(
+                                            `Could not remove ${name}`,
+                                            { description: res.reason },
                                           );
                                         }
                                       } finally {
@@ -1317,6 +1352,7 @@ export default function HostPage() {
                           >
                             <td className="py-3 px-2 font-medium">
                               <div className="flex items-center gap-2 flex-wrap">
+                                <InitialAvatar name={r.singer} size="sm" />
                                 <span className="font-semibold text-base">
                                   {r.singer}
                                 </span>
@@ -1327,12 +1363,13 @@ export default function HostPage() {
                                     r,
                                     getRequestsByEvent(eventId),
                                   ) && (
-                                    <span
-                                      className="text-[11px] font-bold px-2 py-0.5 rounded bg-orange-500/25 text-orange-700 dark:text-orange-200 ring-1 ring-orange-500/50 whitespace-nowrap"
+                                    <Chip
+                                      tone="gold"
+                                      icon={<AlertTriangle aria-hidden="true" />}
                                       title="Another person with this same name is already in the queue. Approving will prompt you to tell them apart."
                                     >
-                                      ⚠ NAME CLASH
-                                    </span>
+                                      Name clash
+                                    </Chip>
                                   )}
                               </div>
                             </td>
@@ -1373,12 +1410,15 @@ export default function HostPage() {
                                               : ""
                                           }`
                                         : "already in the queue from a different device";
-                                      const entered = prompt(
-                                        `Heads up: "${clash.name}" is ${detail}.\n\n` +
-                                          `Approving with the same name would stack them into one queue slot.\n\n` +
-                                          `Enter a name to tell them apart, or press Cancel to approve as-is:`,
-                                        clash.suggestion,
-                                      );
+                                      const entered = await promptDialog({
+                                        title: `Two singers called "${clash.name}"`,
+                                        description:
+                                          `"${clash.name}" is ${detail}. Approving with the same name would stack them into one queue slot.\n\n` +
+                                          `Enter a name to tell them apart, or choose Keep name to approve as-is.`,
+                                        defaultValue: clash.suggestion,
+                                        confirmLabel: "Approve",
+                                        cancelLabel: "Keep name",
+                                      });
                                       if (entered && entered.trim()) {
                                         nameToUse = entered.trim();
                                         await updateRequestInfo(r.id, {
@@ -1406,9 +1446,12 @@ export default function HostPage() {
                                   className="h-8 text-xs"
                                   onClick={async () => {
                                     if (
-                                      confirm(
-                                        `Delete ${r.singer} - ${r.songTitle}?`,
-                                      )
+                                      await confirmDialog({
+                                        title: `Delete ${r.singer}'s request?`,
+                                        description: r.songTitle,
+                                        confirmLabel: "Delete",
+                                        danger: true,
+                                      })
                                     ) {
                                       await deleteRequest(r.id);
                                       setTick((t) => t + 1);
@@ -1542,16 +1585,17 @@ function NightAtAGlance({
     req,
     person,
     accent,
+    live,
   }: {
+    live?: boolean;
     label: string;
     req?: RequestItem | null;
     person?: PersonIdentity;
     accent: string;
   }) => (
     <div className="min-w-0 flex-1">
-      <div
-        className={`text-[11px] font-bold uppercase tracking-widest ${accent}`}
-      >
+      <div className={`eyebrow flex items-center gap-2 ${accent}`}>
+        {live && req && <Equalizer />}
         {label}
       </div>
       {req ? (
@@ -1560,16 +1604,8 @@ function NightAtAGlance({
             <span className="text-2xl sm:text-3xl font-extrabold leading-tight truncate">
               {req.singer}
             </span>
-            {req.isDuo && (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-teal-500/25 text-teal-200 ring-1 ring-teal-400/50">
-                DUET{req.partner ? ` · ${req.partner}` : ""}
-              </span>
-            )}
-            {person?.multiName && (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-red-500/30 text-red-200 ring-1 ring-red-400/60">
-                ⚠ {person.aliases.length} NAMES
-              </span>
-            )}
+            <DuoBadge request={req} />
+            <AliasFlag person={person} />
           </div>
           <div className="text-base sm:text-lg text-foreground/85 truncate">
             {req.songTitle}
@@ -1604,7 +1640,7 @@ function NightAtAGlance({
   );
 
   return (
-    <Card className="border-primary/40 bg-gradient-to-r from-primary/15 to-accent/10">
+    <Card className="spotlight rounded-2xl">
       <CardContent className="py-4">
         <div className="flex flex-col lg:flex-row lg:items-center gap-5">
           <div className="flex flex-col sm:flex-row gap-5 flex-1 min-w-0">
@@ -1612,14 +1648,15 @@ function NightAtAGlance({
               label="Now singing"
               req={now}
               person={nowPerson}
-              accent="text-primary"
+              accent="text-accent"
+              live
             />
             <div className="hidden sm:block w-px bg-border/60 self-stretch" />
             <Slot
               label="On deck"
               req={onDeck}
               person={onDeckPerson}
-              accent="text-amber-400"
+              accent="text-primary"
             />
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -1627,7 +1664,7 @@ function NightAtAGlance({
             <Stat
               n={pendingCount}
               label="Pending"
-              tone={pendingCount > 0 ? "text-amber-400" : ""}
+              tone={pendingCount > 0 ? "text-accent" : ""}
             />
             <Stat n={sungCount} label="Sung" />
             <Stat
@@ -1700,7 +1737,7 @@ function SetListCard({ entries }: { entries: SetListEntry[] }) {
                   key={s.singer}
                   className={`text-xs px-2 py-1 rounded-md border ${
                     s.count > 1
-                      ? "bg-amber-500/15 border-amber-500/40 text-amber-200"
+                      ? "bg-accent/15 border-accent/40 text-accent"
                       : "bg-muted/40 border-border text-muted-foreground"
                   }`}
                   title={`Sang at position ${s.positions.join(", ")}`}
@@ -1727,7 +1764,7 @@ function SetListCard({ entries }: { entries: SetListEntry[] }) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold">{e.singer}</span>
                     {e.nthForSinger > 1 && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-700 dark:text-amber-200">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-accent/25 text-accent">
                         {e.nthForSinger}
                         {e.nthForSinger === 2
                           ? "nd"
@@ -1738,7 +1775,7 @@ function SetListCard({ entries }: { entries: SetListEntry[] }) {
                       </span>
                     )}
                     {e.isDuo && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-700 dark:text-teal-200">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/25 text-primary">
                         DUET{e.partner ? ` · ${e.partner}` : ""}
                       </span>
                     )}
@@ -1764,39 +1801,40 @@ function SetListCard({ entries }: { entries: SetListEntry[] }) {
 }
 
 /**
- * Loud inline flag for a singer whose device has used other names tonight.
- * Sits directly beside the name so it is caught while scanning, rather than
- * requiring the Who/Device column to be read.
+ * Flag for a singer whose device has used other names tonight. Sits directly
+ * beside the name so it is caught while scanning the queue.
  */
 function AliasFlag({ person }: { person?: PersonIdentity }) {
   if (!person?.multiName) return null;
   const others = person.aliases.map((a) => `"${a.name}" ${agoLabel(a.lastAt)}`);
+  const extra = person.aliases.length - 1;
   return (
-    <span
-      className="text-[11px] font-bold px-2 py-0.5 rounded bg-red-500/30 text-red-700 dark:text-red-200 ring-1 ring-red-500/60 whitespace-nowrap"
+    <Chip
+      tone="danger"
+      icon={<AlertTriangle aria-hidden="true" />}
       title={`Same device as: ${others.join(" · ")}`}
     >
-      ⚠ ALSO {person.aliases.length - 1} OTHER
-      {person.aliases.length - 1 === 1 ? " NAME" : " NAMES"}
-      {person.completedCount > 0 ? ` · SUNG ${person.completedCount}×` : ""}
-    </span>
+      {extra} other name{extra === 1 ? "" : "s"}
+      {person.completedCount > 0 ? ` · sung ${person.completedCount}×` : ""}
+    </Chip>
   );
 }
 
-/** Small "DUET" pill shown next to a singer name. */
+/** Duet marker shown next to a singer name. */
 function DuoBadge({ request }: { request?: RequestItem | null }) {
   if (!request?.isDuo) return null;
   return (
-    <span
-      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/25 text-teal-700 dark:text-teal-300 ring-1 ring-teal-500/40 whitespace-nowrap"
+    <Chip
+      tone="brand"
+      icon={<Users aria-hidden="true" />}
       title={
         request.partner
           ? `Duet with ${request.partner}`
           : "Marked as a duet / group song"
       }
     >
-      DUET{request.partner ? ` · ${request.partner}` : ""}
-    </span>
+      Duet{request.partner ? ` · ${request.partner}` : ""}
+    </Chip>
   );
 }
 
@@ -1838,17 +1876,17 @@ function PersonCell({
           {person.short}
         </span>
         {person.multiName && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/25 text-red-700 dark:text-red-300 ring-1 ring-red-500/50 whitespace-nowrap">
-            ⚠ {person.aliases.length} NAMES
-          </span>
+          <Chip tone="danger" icon={<AlertTriangle aria-hidden="true" />}>
+            {person.aliases.length} names
+          </Chip>
         )}
         {person.completedCount > 0 && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground whitespace-nowrap"
+          <Chip
+            tone="neutral"
             title={`${person.completedCount} song(s) already performed tonight`}
           >
             sung {person.completedCount}×
-          </span>
+          </Chip>
         )}
       </div>
       {person.multiName && others.length > 0 && (
@@ -1889,18 +1927,17 @@ function TurnsBadge({
   const f = entryFairness(request, stats as any);
   if (f.participants.length < 2) return null;
 
-  return (
-    <span
-      className={`text-[11px] font-bold px-2 py-0.5 rounded whitespace-nowrap ${
-        f.hasWaitingNewcomer
-          ? "bg-emerald-500/25 text-emerald-700 dark:text-emerald-200 ring-1 ring-emerald-500/50"
-          : "bg-muted text-muted-foreground"
-      }`}
+  return f.hasWaitingNewcomer ? (
+    <Chip
+      tone="success"
+      icon={<Star aria-hidden="true" />}
       title={describeTurns(f)}
     >
-      {f.hasWaitingNewcomer
-        ? `★ ${f.firstTimers.join(", ")} 1st tonight`
-        : describeTurns(f)}
-    </span>
+      {f.firstTimers.join(", ")} 1st tonight
+    </Chip>
+  ) : (
+    <Chip tone="neutral" title={describeTurns(f)}>
+      {describeTurns(f)}
+    </Chip>
   );
 }

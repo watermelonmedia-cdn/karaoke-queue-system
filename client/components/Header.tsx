@@ -1,54 +1,38 @@
-import { Button } from "@/components/ui/button";
+import { KeyRound } from "lucide-react";
 import { getSettings } from "@/lib/karaoke";
 
+/**
+ * Deliberately quiet. On a singer's phone the only loud thing on the page
+ * should be the request button, so the host entrance is a small icon rather
+ * than the brightest button on screen, and the title is never truncated.
+ */
 export default function Header() {
   const settings = getSettings();
   return (
     <header className="sticky top-0 z-40 w-full">
-      <div className="border-b border-border/50 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/55">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
-          <a href="/" className="group inline-flex items-center gap-3 min-w-0">
-            {settings.logoUrl ? (
-              <img
-                src={settings.logoUrl}
-                alt="Logo"
-                className="h-9 w-auto rounded-md ring-1 ring-white/10 transition group-hover:ring-accent/40"
-              />
-            ) : (
-              <div className="relative h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-accent ring-1 ring-white/15 shadow-lg shadow-primary/30 transition group-hover:shadow-primary/50">
-                <span className="absolute inset-0 grid place-items-center text-base">
-                  🎤
-                </span>
-              </div>
-            )}
-            <span className="font-display text-lg sm:text-xl font-extrabold tracking-tight truncate">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-accent">
-                Rossco’s Karaoke
-              </span>
+      <div className="border-b border-border/50 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto max-w-6xl px-4 py-2.5 flex items-center justify-between gap-3">
+          <a href="/" className="group inline-flex items-center gap-2.5 min-w-0">
+            <img
+              src={settings.logoUrl || "/assets/logo.png"}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-md object-contain"
+            />
+            <span className="font-display text-base sm:text-xl font-extrabold tracking-tight whitespace-nowrap text-foreground">
+              Rossco’s <span className="text-primary">Karaoke</span>
             </span>
           </a>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* h-11 on phones keeps the tap area at the 44px minimum that
-                Apple and WCAG both ask for; shrinks on desktop where a
-                cursor is precise. */}
-            <Button
-              asChild
-              variant="ghost"
-              className="h-11 sm:h-9 px-3 sm:px-3 font-semibold hover:bg-white/5"
-            >
-              <a href="/">Events</a>
-            </Button>
-            <Button
-              asChild
-              className="h-11 sm:h-9 px-4 font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25"
-            >
-              <a href="/host/login">Host Login</a>
-            </Button>
-          </div>
+          <a
+            href="/host/login"
+            aria-label="Host login"
+            title="Host login"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-white/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <KeyRound className="h-5 w-5" />
+          </a>
         </div>
       </div>
-      {/* gold hairline under the bar */}
-      <div className="rule-gold opacity-70" />
+      <div className="rule-gold opacity-60" />
     </header>
   );
 }

@@ -13,6 +13,7 @@ import HostLoginPage from "./pages/HostLogin";
 import HostArchivePage from "./pages/HostArchive";
 import HostSettingsPage from "./pages/HostSettings";
 import Header from "@/components/Header";
+import { DialogHost } from "@/components/dialogs";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <DialogHost />
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>

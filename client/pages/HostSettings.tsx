@@ -1,3 +1,4 @@
+import { confirmDialog, promptDialog } from "@/components/dialogs";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -246,7 +247,10 @@ export default function HostSettingsPage() {
                       variant="secondary"
                       onClick={async () => {
                         const pwd =
-                          prompt(`Set a new password for ${u.username}`) || "";
+                          (await promptDialog({
+                            title: `New password for ${u.username}`,
+                            confirmLabel: "Save",
+                          })) || "";
                         if (!pwd) return;
                         const res = await updateUserPassword(u.username, pwd);
                         if (res.ok) setUsersTick((t) => t + 1);
@@ -257,8 +261,14 @@ export default function HostSettingsPage() {
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() => {
-                        if (confirm(`Delete user ${u.username}?`)) {
+                      onClick={async () => {
+                        if (
+                          await confirmDialog({
+                            title: `Delete user ${u.username}?`,
+                            confirmLabel: "Delete",
+                            danger: true,
+                          })
+                        ) {
                           const r = deleteUser(u.username);
                           if (r.ok) setUsersTick((t) => t + 1);
                         }
@@ -314,7 +324,7 @@ export default function HostSettingsPage() {
                   if (res.ok) {
                     setNewUser({ username: "", password: "", isAdmin: false });
                     setUsersTick((t) => t + 1);
-                  } else alert(res.reason);
+                  } else toast({ title: "Could not save", description: (res as any).reason });
                 }}
               >
                 Add

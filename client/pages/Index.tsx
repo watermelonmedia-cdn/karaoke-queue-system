@@ -16,7 +16,17 @@ import {
   rememberName,
   checkNameClash,
 } from "@/lib/mysongs";
-import { Music, Users } from "lucide-react";
+import {
+  Calendar,
+  ListMusic,
+  MapPin,
+  Mic,
+  Music,
+  PartyPopper,
+  Users,
+} from "lucide-react";
+import { Chip, Equalizer, InitialAvatar } from "@/components/kit";
+import { confettiBurst } from "@/lib/confetti";
 import {
   bootstrapEvents,
   getEvents,
@@ -173,14 +183,16 @@ export default function Index() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-10">
         <div className="mb-8 text-center space-y-3">
-          <img
-            src={settings.logoUrl || "/assets/logo.png"}
-            alt="Logo"
-            className="mx-auto h-[9.875rem] w-auto rounded"
-          />
+          <div className="logo-glow">
+            <img
+              src={settings.logoUrl || "/assets/logo.png"}
+              alt="Rossco’s Karaoke"
+              className="mx-auto h-[9.875rem] w-auto"
+            />
+          </div>
           <div className="mt-10">
             <div className="glass mx-auto max-w-lg rounded-2xl px-8 py-10">
-              <p className="text-5xl">🎤✨</p>
+              <Mic className="mx-auto h-10 w-10 text-accent" aria-hidden="true" />
               <div className="eyebrow mt-4 text-accent/90">Between shows</div>
               <h2 className="font-display mt-1 text-3xl md:text-4xl font-extrabold marquee-text">
                 Coming Soon
@@ -191,7 +203,9 @@ export default function Index() {
                 corner.
               </p>
               <div className="rule-gold mx-auto mt-6 w-2/3 opacity-60" />
-              <div className="pt-5 text-4xl animate-bounce text-primary">🎵</div>
+              <div className="pt-5">
+                <Music className="mx-auto h-8 w-8 animate-bounce text-primary" aria-hidden="true" />
+              </div>
             </div>
           </div>
         </div>
@@ -222,11 +236,13 @@ export default function Index() {
     <div className="mx-auto max-w-6xl px-4 py-8 space-y-8">
       {/* Logo and Welcome */}
       <div className="text-center space-y-2 mb-6">
-        <img
-          src={settings.logoUrl || "/assets/logo.png"}
-          alt="Logo"
-          className="mx-auto h-24 w-auto rounded"
-        />
+        <div className="logo-glow">
+          <img
+            src={settings.logoUrl || "/assets/logo.png"}
+            alt="Rossco’s Karaoke"
+            className="mx-auto h-28 w-auto"
+          />
+        </div>
         <h1 className="font-display text-3xl md:text-4xl font-extrabold tracking-tight marquee-text">
           Sing! Laugh! Enjoy!
         </h1>
@@ -259,10 +275,12 @@ export default function Index() {
                   {isClosed ? "Requests Closed" : "Requests Open"}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/30 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur">
-                  📅 {formatEventDate(activeEvent.datetime)}
+                  <Calendar className="h-4 w-4" aria-hidden="true" />
+                  {formatEventDate(activeEvent.datetime)}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-background/30 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur">
-                  📍 {activeEvent.location}
+                  <MapPin className="h-4 w-4" aria-hidden="true" />
+                  {activeEvent.location}
                 </span>
               </div>
             </div>
@@ -284,7 +302,8 @@ export default function Index() {
                 }}
                 className="mt-1 h-12 rounded-xl px-7 text-base font-bold shadow-lg shadow-primary/30 transition hover:-translate-y-0.5 hover:shadow-primary/50"
               >
-                🎤 Request Your Song
+                <Mic className="mr-2 h-5 w-5" aria-hidden="true" />
+                Request your song
               </Button>
             )}
           </div>
@@ -295,206 +314,83 @@ export default function Index() {
           Mobile: plain stack, unchanged. */}
       <div className="grid grid-cols-1 lg:grid-cols-5 lg:gap-8 gap-8 lg:items-start">
         <div className="lg:col-span-3 space-y-8 min-w-0">
-      {/* Request Queue Summary */}
+      {/* Tonight's lineup */}
       <Card className="glass rounded-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-primary" />
-            Request Queue
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Pending
-              </p>
-              <div className="bg-amber-500/20 p-4 rounded-lg text-center">
-                <p className="text-3xl font-extrabold text-amber-600 dark:text-amber-400">
-                  {pendingCount}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  waiting to be approved
-                </p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Approved
-              </p>
-              <div className="bg-emerald-500/20 p-4 rounded-lg text-center">
-                <p className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                  {approvedCount}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  in the queue
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Queue Status */}
-      <Card className="glass rounded-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Music className="w-5 h-5 text-primary" />
-            Queue Status
+        <CardHeader className="pb-3">
+          <CardTitle className="font-display text-xl flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <ListMusic className="h-5 w-5 text-primary" aria-hidden="true" />
+              Tonight’s lineup
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Chip tone="brand">{approvedCount} in queue</Chip>
+              {pendingCount > 0 && (
+                <Chip tone="neutral">{pendingCount} awaiting host</Chip>
+              )}
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {nowSinging ? (
-            <>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Now Singing
-                </p>
-                <div className="bg-primary/10 p-3 rounded-lg border-l-4 border-primary">
+          {nowSinging && (
+            <div className="rounded-xl border border-accent/40 bg-accent/10 p-3.5">
+              <div className="eyebrow mb-2 flex items-center gap-2 text-accent">
+                <Equalizer />
+                On stage now
+              </div>
+              <div className="flex items-center gap-3">
+                <InitialAvatar name={nowSinging.singer} size="lg" />
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-lg">{nowSinging.singer}</p>
+                    <p className="font-display text-xl font-extrabold leading-tight">
+                      {nowSinging.singer}
+                    </p>
                     <DuetPill request={nowSinging} />
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {nowSinging.songTitle} • {nowSinging.artist}
+                  <p className="text-sm text-muted-foreground truncate">
+                    {nowSinging.songTitle}
+                    {nowSinging.artist ? ` · ${nowSinging.artist}` : ""}
                   </p>
                 </div>
               </div>
-              {upcomingQueue.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Up Next ({upcomingQueue.length})
-                  </p>
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-2 scrollbar-thin">
-                    {upcomingQueue.map((request, idx) => {
-                      const isUpNext = idx === 0;
-                      return (
-                        <div
-                          key={request.id}
-                          className={cn(
-                            "p-3 rounded-lg border-l-4 transition-all",
-                            isUpNext
-                              ? "bg-amber-500/20 border-l-amber-500 ring-2 ring-amber-500/30"
-                              : "bg-muted/50 border-l-accent",
-                          )}
-                        >
-                          <div className="flex items-start gap-2">
-                            <div className="flex flex-col items-center min-w-fit">
-                              <span
-                                className={cn(
-                                  "font-bold text-sm",
-                                  isUpNext
-                                    ? "text-amber-600 dark:text-amber-400"
-                                    : "text-accent",
-                                )}
-                              >
-                                #{idx + 1}
-                              </span>
-                              {isUpNext && (
-                                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                                  NEXT
-                                </span>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className={cn(
-                                  "truncate",
-                                  isUpNext
-                                    ? "font-bold text-base"
-                                    : "font-semibold",
-                                )}
-                              >
-                                {request.singer}
-                              </p>
-                              <DuetPill request={request} inline />
-                              <p className="text-xs text-muted-foreground truncate">
-                                {request.songTitle} • {request.artist}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {upcomingQueue.length > 5 && (
-                      <p className="text-xs text-muted-foreground/50 text-center py-2 italic">
-                        ↓ Scroll to see more singers ↓
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : onDeck ? (
-            <>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Up Next
-                </p>
-                <div className="bg-accent/10 p-3 rounded-lg border-l-4 border-accent ring-2 ring-accent/30">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-lg">{onDeck.singer}</p>
-                    <DuetPill request={onDeck} />
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {onDeck.songTitle} • {onDeck.artist}
-                  </p>
-                </div>
-              </div>
-              {upcomingQueue.length > 1 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Following ({upcomingQueue.length - 1})
-                  </p>
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-2 scrollbar-thin">
-                    {upcomingQueue.slice(1).map((request, idx) => {
-                      return (
-                        <div
-                          key={request.id}
-                          className="bg-muted/50 p-3 rounded-lg border-l-4 border-accent"
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="font-bold text-accent min-w-fit">
-                              #{idx + 2}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold truncate">
-                                {request.singer}
-                              </p>
-                              <DuetPill request={request} inline />
-                              <p className="text-xs text-muted-foreground truncate">
-                                {request.songTitle} • {request.artist}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {upcomingQueue.length > 5 && (
-                      <p className="text-xs text-muted-foreground/50 text-center py-2 italic">
-                        ↓ Scroll to see more singers ↓
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground text-center py-2">
-                Waiting for performance to start...
-              </p>
-            </>
-          ) : (
-            <p className="text-muted-foreground text-center py-6">
-              No one is singing yet. Be the first to submit!
-            </p>
+            </div>
           )}
+
+          {upcomingQueue.length > 0 ? (
+            <div>
+              <p className="eyebrow mb-2 text-muted-foreground">Up next</p>
+              <ol className="space-y-2 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+                {upcomingQueue.map((request, idx) => (
+                  <QueueRow
+                    key={request.id}
+                    request={request}
+                    position={idx + 1}
+                    isNext={idx === 0}
+                  />
+                ))}
+              </ol>
+            </div>
+          ) : !nowSinging ? (
+            <div className="py-6 text-center">
+              <Mic
+                className="mx-auto mb-2 h-8 w-8 text-muted-foreground/60"
+                aria-hidden="true"
+              />
+              <p className="font-display text-lg font-bold">
+                The stage is open
+              </p>
+              <p className="text-sm text-muted-foreground">
+                No one is in the lineup yet. Be the first.
+              </p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
       {/* Song Catalog Link */}
       <Card className="glass rounded-2xl">
-        <CardContent className="p-6 flex items-center justify-between">
+        <CardContent className="p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-lg font-semibold mb-1">Need help finding a song?</h3>
+            <h3 className="font-display text-lg font-bold mb-1">Need help finding a song?</h3>
             <p className="text-sm text-muted-foreground">
               Browse our complete song catalog to find the perfect track
             </p>
@@ -505,8 +401,8 @@ export default function Index() {
             rel="noopener noreferrer"
             className="inline-block"
           >
-            <Button>
-              Browse Catalog →
+            <Button variant="outline" className="h-11 w-full sm:w-auto">
+              Browse catalog
             </Button>
           </a>
         </CardContent>
@@ -648,6 +544,7 @@ function RequestSubmissionForm({
         await refreshRequestsFromRemote();
       } catch {}
       onSubmitted?.();
+      confettiBurst();
 
       // Auto-hide success message after 5 seconds
       setTimeout(() => setSuccess(null), 5000);
@@ -679,7 +576,7 @@ function RequestSubmissionForm({
     return (
       <Card className="rounded-2xl border-emerald-500/40 bg-emerald-500/10 backdrop-blur mb-8">
         <CardContent className="p-8 text-center space-y-4">
-          <div className="text-4xl">🎉</div>
+          <PartyPopper className="mx-auto h-10 w-10 text-emerald-400" aria-hidden="true" />
           <h3 className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
             Thank you for your request!
           </h3>
@@ -688,8 +585,9 @@ function RequestSubmissionForm({
             {success.artist}
           </p>
           {success.isDuo && (
-            <p className="inline-flex items-center gap-2 rounded-full border border-teal-500/40 bg-teal-500/15 px-3 py-1.5 text-sm font-semibold text-teal-700 dark:text-teal-300">
-              🎤🎤 Duet
+            <p className="inline-flex items-center gap-2 rounded-full border border-primary/40 bg-primary/15 px-3 py-1.5 text-sm font-semibold text-primary">
+              <Users className="h-4 w-4" aria-hidden="true" />
+              Duet
               {success.partner ? ` with ${success.partner}` : ""}
             </p>
           )}
@@ -739,7 +637,7 @@ function RequestSubmissionForm({
                 disabled={submitting}
               />
               {nameClash && (
-                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm text-amber-200">
+                <p className="rounded-md border border-accent/40 bg-accent/10 p-2.5 text-sm text-accent">
                   {nameClash}
                 </p>
               )}
@@ -789,7 +687,7 @@ function RequestSubmissionForm({
               />
               <span className="grid gap-0.5 leading-tight">
                 <span className="font-semibold">
-                  🎤🎤 This is a duet or group song
+                  This is a duet or group song
                 </span>
                 <span className="text-xs text-muted-foreground">
                   Tick this if more than one of you is singing.
@@ -854,30 +752,69 @@ function RequestSubmissionForm({
 }
 
 /**
- * Duet indicator for the singer-facing display.
- * Shown wherever a name appears in the public queue so the room can see that
- * a number is a duet, and who it is with.
+ * Duet indicator for the singer-facing display. Shown wherever a name appears
+ * in the public lineup, so the room can see a number is a duet and with whom.
  */
 function DuetPill({
   request,
-  inline = false,
 }: {
   request?: { isDuo?: boolean; partner?: string } | null;
   inline?: boolean;
 }) {
   if (!request?.isDuo) return null;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-teal-400/50 bg-teal-500/20 font-bold text-teal-700 dark:text-teal-200 whitespace-nowrap",
-        inline ? "mt-0.5 px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs",
-      )}
+    <Chip
+      tone="brand"
+      icon={<Users aria-hidden="true" />}
       title={
         request.partner ? `Duet with ${request.partner}` : "Duet / group song"
       }
     >
-      🎤🎤 Duet{request.partner ? ` · ${request.partner}` : ""}
-    </span>
+      Duet{request.partner ? ` · ${request.partner}` : ""}
+    </Chip>
+  );
+}
+
+/** One singer in the public lineup. */
+function QueueRow({
+  request,
+  position,
+  isNext,
+}: {
+  request: RequestItem;
+  position: number;
+  isNext: boolean;
+}) {
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-3 rounded-xl border p-2.5",
+        isNext
+          ? "border-accent/50 bg-accent/10"
+          : "border-border/60 bg-background/30",
+      )}
+    >
+      <span
+        className={cn(
+          "w-6 shrink-0 text-center font-display text-sm font-extrabold",
+          isNext ? "text-accent" : "text-muted-foreground",
+        )}
+      >
+        {position}
+      </span>
+      <InitialAvatar name={request.singer} size="sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-semibold leading-tight">{request.singer}</p>
+          {isNext && <Chip tone="gold">Next</Chip>}
+          <DuetPill request={request} />
+        </div>
+        <p className="text-xs text-muted-foreground truncate">
+          {request.songTitle}
+          {request.artist ? ` · ${request.artist}` : ""}
+        </p>
+      </div>
+    </li>
   );
 }
 
@@ -910,7 +847,7 @@ function MySongsCard({
   const tone: Record<string, string> = {
     performing: "border-accent/60 bg-accent/15",
     queued: "border-primary/40 bg-primary/10",
-    pending: "border-amber-500/40 bg-amber-500/10",
+    pending: "border-accent/40 bg-accent/10",
     complete: "border-border bg-muted/30",
     gone: "border-destructive/40 bg-destructive/10",
   };

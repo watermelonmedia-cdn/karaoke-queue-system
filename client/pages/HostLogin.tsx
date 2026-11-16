@@ -102,7 +102,7 @@ export default function HostLoginPage() {
               </p>
             )}
             {notice && (
-              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm text-amber-300">
+              <p className="rounded-md border border-accent/40 bg-accent/10 p-2.5 text-sm text-accent">
                 {notice}
               </p>
             )}
